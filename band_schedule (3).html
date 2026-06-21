@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>밴드부 합주 시간 투표</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f0f0f;--bg2:#1a1a1a;--bg3:#222;--bg4:#2a2a2a;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);--text:#f0f0f0;--text2:#888;--text3:#555;--accent:#e8ff47;--accent-dim:rgba(232,255,71,0.12);--accent-text:#1a1e00;--green:#4cff91;--green-dim:rgba(76,255,145,0.1);--red:#ff5c5c;--red-dim:rgba(255,92,92,0.1);--radius:10px;--radius-lg:14px;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+  .container{max-width:720px;margin:0 auto;padding:0 16px 80px;}
+  header{padding:36px 0 24px;border-bottom:0.5px solid var(--border);margin-bottom:24px;}
+  .header-label{font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;}
+  header h1{font-size:24px;font-weight:700;letter-spacing:-.02em;}
+  header p{font-size:13px;color:var(--text2);margin-top:5px;}
+
+  /* 카드 */
+  .card{background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:24px;margin-bottom:16px;}
+  .card-title{font-size:15px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+  .card-sub{font-size:13px;color:var(--text2);margin-bottom:16px;}
+  .step-badge{font-family:'DM Mono',monospace;font-size:11px;padding:2px 8px;border-radius:99px;background:var(--accent-dim);color:var(--accent);}
+
+  /* 버튼 */
+  .btn{padding:10px 18px;border-radius:var(--radius);font-size:14px;font-family:'Noto Sans KR',sans-serif;font-weight:500;cursor:pointer;border:0.5px solid var(--border2);background:var(--bg3);color:var(--text);transition:all .15s;}
+  .btn:hover{background:var(--bg4);}
+  .btn-accent{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:700;}
+  .btn-accent:hover{background:#d4eb30;}
+  .btn-sm{padding:6px 12px;font-size:12px;}
+  .btn-danger{background:var(--red-dim);color:var(--red);border-color:rgba(255,92,92,.2);}
+  .btn-danger:hover{background:rgba(255,92,92,.18);}
+
+  /* 입력 */
+  input[type=text],select{background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:'Noto Sans KR',sans-serif;padding:10px 14px;outline:none;transition:border-color .15s;width:100%;}
+  input[type=text]:focus,select:focus{border-color:var(--accent);}
+  input[type=text]::placeholder{color:var(--text3);}
+  select option{background:var(--bg3);color:var(--text);}
+
+  /* 체크박스 */
+  .checkbox-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg3);border:0.5px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:border-color .15s;margin-bottom:6px;}
+  .checkbox-row:hover{border-color:var(--border2);}
+  .checkbox-row.checked{border-color:rgba(76,255,145,.3);background:var(--green-dim);}
+  .checkbox-row.checked-red{border-color:rgba(255,92,92,.3);background:var(--red-dim);}
+  .cb-box{width:18px;height:18px;border:0.5px solid var(--border2);border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .15s;}
+  .checked .cb-box{background:var(--green);border-color:var(--green);color:var(--accent-text);}
+  .checked-red .cb-box{background:var(--red);border-color:var(--red);color:#fff;}
+  .cb-label{font-size:14px;font-weight:500;}
+
+  /* 요일 그리드 */
+  .day-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px;}
+  .day-btn{padding:10px 4px;border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;border:0.5px solid var(--border2);background:var(--bg3);color:var(--text2);transition:all .15s;text-align:center;font-family:'Noto Sans KR',sans-serif;}
+  .day-btn:hover{background:var(--bg4);}
+  .day-btn.impossible{background:var(--red-dim);color:var(--red);border-color:rgba(255,92,92,.3);}
+  .day-btn.possible{background:var(--green-dim);color:var(--green);border-color:rgba(76,255,145,.3);}
+
+  /* 시간 슬롯 */
+  .time-slot-list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
+  .time-slot{display:flex;align-items:center;gap:8px;background:var(--bg3);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;}
+  .time-slot select{width:auto;flex:1;padding:6px 10px;font-size:13px;}
+  .time-slot-sep{font-size:13px;color:var(--text2);flex-shrink:0;}
+  .time-slot-day{font-size:13px;font-weight:500;min-width:28px;color:var(--accent);}
+
+  /* 곡 태그 */
+  .song-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+  .song-chip{font-size:13px;padding:6px 14px;border-radius:99px;border:0.5px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .15s;font-family:'Noto Sans KR',sans-serif;}
+  .song-chip:hover{background:var(--bg4);}
+  .song-chip.selected{background:var(--accent-dim);color:var(--accent);border-color:rgba(232,255,71,.3);}
+
+  /* 상단바 */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding:12px 16px;background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radius-lg);}
+  .user-pill{display:flex;align-items:center;gap:10px;}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--accent);color:var(--accent-text);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;}
+  .sync-dot{width:8px;height:8px;border-radius:50%;background:var(--text3);display:inline-block;margin-right:6px;transition:background .3s;}
+  .sync-dot.live{background:var(--green);}
+  .admin-badge{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--accent-dim);color:var(--accent);font-family:'DM Mono',monospace;margin-left:6px;}
+  .far-badge{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--red-dim);color:var(--red);border:0.5px solid rgba(255,92,92,.2);margin-left:4px;}
+
+  /* 진행 바 */
+  .progress-wrap{margin-bottom:24px;}
+  .progress-steps{display:flex;gap:4px;margin-bottom:8px;}
+  .progress-step{flex:1;height:3px;border-radius:99px;background:var(--bg3);transition:background .3s;}
+  .progress-step.done{background:var(--accent);}
+  .progress-step.active{background:rgba(232,255,71,.4);}
+  .progress-label{font-size:12px;color:var(--text2);}
+
+  /* 집부 모드 */
+  .admin-section{background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;}
+  .admin-section h3{font-size:13px;color:var(--text2);margin-bottom:12px;font-weight:500;}
+  .add-row{display:flex;gap:8px;margin-bottom:8px;}
+  .add-row input{flex:1;}
+
+  /* 집부 현황 */
+  .member-status-grid{display:flex;flex-direction:column;gap:6px;}
+  .member-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);background:var(--bg3);}
+  .member-name{font-size:13px;font-weight:500;min-width:60px;}
+  .member-name.done{color:var(--green);}
+  .member-name.undone{color:var(--red);}
+  .member-songs{display:flex;flex-wrap:wrap;gap:4px;flex:1;}
+  .member-song-tag{font-size:11px;padding:2px 8px;border-radius:99px;}
+  .member-song-tag.done{background:var(--green-dim);color:var(--green);}
+  .member-song-tag.undone{background:var(--red-dim);color:var(--red);}
+  .far-tag{font-size:10px;padding:1px 6px;border-radius:99px;background:var(--red-dim);color:var(--red);border:0.5px solid rgba(255,92,92,.2);margin-left:4px;}
+
+  /* 합주 시간표 */
+  .schedule-wrap{margin-top:16px;}
+  .schedule-day{margin-bottom:20px;}
+  .schedule-day-title{font-size:14px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+  .schedule-slot{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius);margin-bottom:6px;border-left:3px solid var(--accent);}
+  .schedule-time{font-family:'DM Mono',monospace;font-size:13px;color:var(--accent);min-width:110px;}
+  .schedule-song{font-size:13px;font-weight:500;}
+  .schedule-members{font-size:12px;color:var(--text2);}
+
+  /* 시간표 카드 */
+  .timetable-card{background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;}
+  .timetable-card.recommended{border-color:rgba(232,255,71,.3);background:linear-gradient(135deg,rgba(232,255,71,.04),rgba(76,255,145,.03));}
+  .timetable-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .timetable-title{font-size:14px;font-weight:600;}
+  .recommend-badge{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--accent);color:var(--accent-text);font-weight:700;}
+  .save-img-btn{font-size:12px;padding:5px 12px;border-radius:var(--radius);border:0.5px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;font-family:'Noto Sans KR',sans-serif;}
+  .save-img-btn:hover{background:var(--bg4);color:var(--text);}
+
+  /* 완료 화면 */
+  .done-card{background:var(--bg2);border:0.5px solid rgba(76,255,145,.2);border-radius:var(--radius-lg);padding:36px 32px;max-width:440px;margin:40px auto;text-align:center;}
+  .done-card h2{font-size:18px;font-weight:600;margin-bottom:12px;}
+  .done-card p{font-size:14px;color:var(--text2);line-height:1.8;}
+
+  /* 세션 입력 */
+  .session-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:12px;}
+  .session-slot{background:var(--bg3);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px;}
+  .session-slot-name{font-size:12px;color:var(--text2);margin-bottom:6px;}
+  .session-slot input{padding:5px 8px;font-size:12px;}
+
+  /* 에러 */
+  .err{font-size:13px;color:var(--red);margin-top:8px;}
+  .notice{font-size:13px;color:var(--text2);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 14px;background:var(--bg2);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+  .notice-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0;}
+
+  /* 로딩 */
+  .loading{text-align:center;padding:60px 0;color:var(--text2);font-size:14px;}
+  .spinner{width:24px;height:24px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 12px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+  .fade{animation:fadeUp .25s ease;}
+
+  /* 곡 완료 표기 */
+  .song-status-list{display:flex;flex-direction:column;gap:6px;}
+  .song-status-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--radius);border:0.5px solid var(--border);}
+  .song-status-row.all-done{border-color:rgba(76,255,145,.3);background:var(--green-dim);}
+  .song-status-row.not-done{border-color:rgba(255,92,92,.3);background:var(--red-dim);}
+  .song-status-name{font-size:13px;font-weight:500;}
+  .song-status-name.all-done{color:var(--green);}
+  .song-status-name.not-done{color:var(--red);}
+
+  /* 멤버 상세 모달 */
+  .detail-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);}
+  .detail-modal{background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius-lg);padding:24px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;animation:fadeUp .2s ease;}
+  .detail-modal h3{font-size:16px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;}
+  .detail-modal-close{background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0;}
+  .detail-modal-close:hover{color:var(--text);}
+  .detail-day-block{margin-bottom:14px;}
+  .detail-day-title{font-size:13px;font-weight:600;color:var(--accent);margin-bottom:6px;}
+  .detail-slot-row{font-size:13px;color:var(--text2);padding:4px 0;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:8px;}
+  .detail-impossible{color:var(--red);font-size:13px;padding:6px 10px;background:var(--red-dim);border-radius:var(--radius);margin-bottom:6px;}
+  .detail-songs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;}
+  .detail-song-tag{font-size:12px;padding:3px 10px;border-radius:99px;background:var(--accent-dim);color:var(--accent);}
+  .member-name-btn{cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+  .member-name-btn:hover{opacity:.8;}
+
+  @media(max-width:480px){
+    header h1{font-size:20px;}
+    .day-grid{grid-template-columns:repeat(4,1fr);}
+    .card{padding:16px;}
+  }
+</style>
+</head>
+<body>
+<!-- 멤버 상세 모달 -->
+<div id="memberDetailOverlay" class="detail-modal-overlay" style="display:none;" onclick="closeMemberDetail(event)">
+  <div class="detail-modal" id="memberDetailModal">
+    <h3 id="memberDetailName"><span></span><button class="detail-modal-close" onclick="closeMemberDetailBtn()">✕</button></h3>
+    <div id="memberDetailBody"></div>
+  </div>
+</div>
+
+<div class="container">
+  <header>
+    <div class="header-label">🎸 Band Schedule</div>
+    <h1>합주 시간 투표</h1>
+    <p>가능한 요일과 시간대를 선택해주세요.</p>
+  </header>
+
+  <!-- 로그인 -->
+  <div id="loginView" class="fade">
+    <div class="card">
+      <div class="card-title">본인 이름을 입력해주세요</div>
+      <div class="card-sub">이름은 3글자로 입력해주세요.</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input type="text" id="nameInput" placeholder="예: 홍길동" maxlength="10" onkeydown="if(event.key==='Enter')login()" />
+        <button class="btn btn-accent" onclick="login()" style="white-space:nowrap;">시작 →</button>
+      </div>
+      <!-- 원거리 체크박스 -->
+      <div class="checkbox-row" id="farCheckRow" onclick="toggleFar()" style="margin-bottom:8px;">
+        <div class="cb-box" id="farCb"></div>
+        <div>
+          <div class="cb-label">편도 2시간 30분 이상 소요</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px;">체크 시 출발 지역을 입력해주세요</div>
+        </div>
+      </div>
+      <div id="farRegionWrap" style="display:none;margin-bottom:8px;">
+        <input type="text" id="farRegion" placeholder="출발 지역 (예: 수원, 인천)" />
+      </div>
+      <!-- 이틀 이상 가능 체크박스 -->
+      <div class="checkbox-row" id="multiDayCheckRow" onclick="toggleMultiDay()" style="margin-bottom:8px;">
+        <div class="cb-box" id="multiDayCb"></div>
+        <div>
+          <div class="cb-label">이틀 이상 나올 수 있어요</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px;">체크 시 합주가 이틀에 나뉘어도 참여 가능</div>
+        </div>
+      </div>
+      <div class="err" id="loginErr"></div>
+    </div>
+  </div>
+
+  <!-- 메인 -->
+  <div id="mainView" style="display:none;">
+    <div class="topbar">
+      <div class="user-pill">
+        <div class="avatar" id="avatarEl"></div>
+        <div>
+          <div style="font-size:14px;font-weight:500;display:flex;align-items:center;" id="userNameEl"></div>
+          <div style="font-size:12px;color:var(--text2);">으로 접속 중</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:12px;color:var(--text2);"><span class="sync-dot" id="syncDot"></span>실시간</span>
+        <button class="btn btn-sm" onclick="logout()">나가기</button>
+      </div>
+    </div>
+
+    <!-- 일반 부원: 단계별 투표 -->
+    <div id="userFlow" style="display:none;">
+      <div class="progress-wrap">
+        <div class="progress-steps">
+          <div class="progress-step" id="ps0"></div>
+          <div class="progress-step" id="ps1"></div>
+          <div class="progress-step" id="ps2"></div>
+        </div>
+        <div class="progress-label" id="progressLabel"></div>
+      </div>
+      <div id="step0View"></div>
+      <div id="step1View" style="display:none;"></div>
+      <div id="step2View" style="display:none;"></div>
+      <div id="doneMsgView" style="display:none;">
+        <div class="done-card fade">
+          <div style="font-size:44px;margin-bottom:16px;">🎸</div>
+          <h2>투표 완료!</h2>
+          <p>소중한 의견 감사합니다.<br><br>최종 합주 시간표가 확정되면<br><strong style="color:var(--text);">집부진들이 공유</strong>할 예정입니다.<br><br>조금만 기다려주세요!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 집부 모드 -->
+    <div id="adminFlow" style="display:none;">
+      <!-- 탭 -->
+      <div style="display:flex;border:0.5px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:20px;">
+        <button class="btn" id="atab0" onclick="switchAdminTab(0)" style="flex:1;border:none;border-radius:0;border-right:0.5px solid var(--border);">🎵 곡 관리</button>
+        <button class="btn" id="atab1" onclick="switchAdminTab(1)" style="flex:1;border:none;border-radius:0;border-right:0.5px solid var(--border);">👥 투표 현황</button>
+        <button class="btn" id="atab2" onclick="switchAdminTab(2)" style="flex:1;border:none;border-radius:0;">📅 시간표</button>
+      </div>
+      <div id="adminTab0"></div>
+      <div id="adminTab1" style="display:none;"></div>
+      <div id="adminTab2" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, set, get, push, remove, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig={apiKey:"AIzaSyAVQQUffcX9oc6y0rSNX0V96ZX3Ll5Ejuw",authDomain:"echo-sound-40.firebaseapp.com",projectId:"echo-sound-40",storageBucket:"echo-sound-40.firebasestorage.app",messagingSenderId:"824454344194",appId:"1:824454344194:web:bcda623835e94790f1c11b",databaseURL:"https://echo-sound-40-default-rtdb.firebaseio.com"};
+const app=initializeApp(firebaseConfig);
+const db=getDatabase(app);
+
+const ADMIN='집부';
+const DAYS=['월','화','수','목','금','토','일'];
+const WEEKDAYS=['월','화','수','목','금'];
+const WEEKEND=['토','일'];
+const SESSIONS=['보컬','드럼','기타1','기타2','건반1','건반2','베이스'];
+
+// 시간 옵션
+function timeOptions(day){
+  const isWeekend=WEEKEND.includes(day);
+  const start=isWeekend?9:15;
+  const end=isWeekend?22:22;
+  let opts='<option value="">선택</option>';
+  for(let h=start;h<=end;h++){
+    opts+=`<option value="${h}:00">${h}:00</option>`;
+    if(h<end) opts+=`<option value="${h}:30">${h}:30</option>`;
+  }
+  return opts;
+}
+
+let currentUser=null,isAdmin=false,isFar=false,farRegion='',isMultiDay=false;
+let songs={},votes={},sessionExport={};
+let unsubAll=[];
+let step=0;
+let localData={songs:[],impossibleDays:[],timeSlots:{}};
+let adminTabN=0;
+
+// 로그인 관련
+let farChecked=false,multiDayChecked=false;
+window.toggleFar=function(){
+  farChecked=!farChecked;
+  const row=document.getElementById('farCheckRow');
+  const cb=document.getElementById('farCb');
+  const wrap=document.getElementById('farRegionWrap');
+  row.className='checkbox-row'+(farChecked?' checked-red':'');
+  cb.textContent=farChecked?'✓':'';
+  wrap.style.display=farChecked?'block':'none';
+};
+window.toggleMultiDay=function(){
+  multiDayChecked=!multiDayChecked;
+  const row=document.getElementById('multiDayCheckRow');
+  const cb=document.getElementById('multiDayCb');
+  row.className='checkbox-row'+(multiDayChecked?' checked':'');
+  cb.textContent=multiDayChecked?'✓':'';
+};
+
+function login(){
+  const v=document.getElementById('nameInput').value.trim();
+  if(!v){document.getElementById('loginErr').textContent='이름을 입력해주세요.';return;}
+  if(farChecked&&!document.getElementById('farRegion').value.trim()){
+    document.getElementById('loginErr').textContent='출발 지역을 입력해주세요.';return;
+  }
+
+  // 집부 모드는 바로 통과
+  if(v===ADMIN){
+    proceedLogin(v);return;
+  }
+
+  // 집부가 등록한 멤버 목록에서 이름 확인
+  get(ref(db,'sched_members')).then(snap=>{
+    const members=snap.val()||{};
+    const memberList=Object.values(members).map(m=>m.name||m);
+    if(!memberList.length){
+      // 멤버 목록이 비어있으면 일단 통과 (집부가 아직 등록 안 한 경우)
+      proceedLogin(v);return;
+    }
+    if(!memberList.includes(v)){
+      document.getElementById('loginErr').innerHTML=
+        `이름을 찾을 수 없어요.<br>
+        <span style="font-size:12px;color:var(--text2);">이름 석 자를 정확히 입력했는지 다시 확인해주세요.<br>
+        잘 기입됐는데 안 되면 <strong style="color:var(--text);">기장 홍영진 또는 양지원</strong>에게 연락해주세요.</span>`;
+      return;
+    }
+    proceedLogin(v);
+  });
+}
+
+function proceedLogin(v){
+  currentUser=v;isAdmin=(v===ADMIN);
+  isFar=farChecked;farRegion=document.getElementById('farRegion').value.trim();
+  isMultiDay=multiDayChecked;
+  document.getElementById('loginView').style.display='none';
+  document.getElementById('mainView').style.display='block';
+  document.getElementById('avatarEl').textContent=v.charAt(0);
+  let badge=isAdmin?'<span class="admin-badge">집부</span>':'';
+  if(isFar) badge+='<span class="far-badge">원거리</span>';
+  if(isMultiDay&&!isFar) badge+='<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:rgba(76,255,145,.1);color:var(--green);border:0.5px solid rgba(76,255,145,.2);margin-left:4px;">이틀가능</span>';
+  document.getElementById('userNameEl').innerHTML=v+badge;
+  if(isAdmin){
+    document.getElementById('adminFlow').style.display='block';
+    startSync();
+    switchAdminTab(0);
+  } else {
+    document.getElementById('userFlow').style.display='block';
+    startSync();
+    setStep(0);
+  }
+}
+window.login=login;
+
+function logout(){
+  unsubAll.forEach(u=>u());unsubAll=[];
+  currentUser=null;isAdmin=false;isFar=false;farChecked=false;farRegion='';isMultiDay=false;multiDayChecked=false;
+  step=0;localData={songs:[],impossibleDays:[],timeSlots:{}};songs={};votes={};sessionExport={};
+  document.getElementById('mainView').style.display='none';
+  document.getElementById('loginView').style.display='block';
+  document.getElementById('nameInput').value='';
+  document.getElementById('loginErr').textContent='';
+  document.getElementById('farCheckRow').className='checkbox-row';
+  document.getElementById('farCb').textContent='';
+  document.getElementById('farRegionWrap').style.display='none';
+  document.getElementById('multiDayCheckRow').className='checkbox-row';
+  document.getElementById('multiDayCb').textContent='';
+  document.getElementById('userFlow').style.display='none';
+  document.getElementById('adminFlow').style.display='none';
+  document.getElementById('syncDot').classList.remove('live');
+}
+window.logout=logout;
+
+function startSync(){
+  document.getElementById('syncDot').classList.remove('live');
+  const u1=onValue(ref(db,'sched_songs'),snap=>{
+    songs=snap.val()||{};
+    document.getElementById('syncDot').classList.add('live');
+    if(!isAdmin) renderStep(step);
+    else renderAdminTab(adminTabN);
+  });
+  const u2=onValue(ref(db,'sched_votes'),snap=>{
+    votes=snap.val()||{};
+    if(!isAdmin) renderStep(step);
+    else renderAdminTab(adminTabN);
+  });
+  // 세션 배정 데이터 불러오기 (session_export)
+  const u3=onValue(ref(db,'session_export'),snap=>{
+    sessionExport=snap.val()||{};
+    // sched_songs가 비어있으면 session_export 기반으로 곡 목록 자동 동기화
+    if(isAdmin&&Object.keys(songs).length===0&&Object.keys(sessionExport).length>0){
+      const updates={};
+      Object.entries(sessionExport).forEach(([sid,s])=>{
+        updates[sid]={title:s.title,sessions:{},createdAt:Date.now()};
+        // 세션 담당자 자동 입력
+        Object.entries(s.sessions||{}).forEach(([sessId,sessData])=>{
+          if(sessData.active&&sessData.members?.length){
+            sessData.members.forEach(m=>{ updates[sid].sessions[sessId]=(updates[sid].sessions[sessId]?updates[sid].sessions[sessId]+', ':'')+m; });
+          }
+        });
+      });
+      set(ref(db,'sched_songs'),updates);
+    }
+    if(isAdmin) renderAdminTab(adminTabN);
+  });
+  unsubAll=[u1,u2,u3];
+}
+
+// ── 진행 단계 ──
+function setStep(n){
+  step=n;
+  [0,1,2].forEach(i=>{
+    document.getElementById('step'+i+'View').style.display=i===n?'block':'none';
+  });
+  document.getElementById('doneMsgView').style.display='none';
+  updateProgress(n);
+  renderStep(n);
+}
+
+function updateProgress(n){
+  const labels=['1단계: 참여 곡 선택','2단계: 불가능한 요일 선택','3단계: 가능 시간대 입력'];
+  [0,1,2].forEach(i=>{
+    const el=document.getElementById('ps'+i);
+    el.className='progress-step'+(i<n?' done':i===n?' active':'');
+  });
+  document.getElementById('progressLabel').textContent=labels[n]||'완료';
+}
+
+function renderStep(n){
+  if(n===0) renderStep0();
+  else if(n===1) renderStep1();
+  else if(n===2) renderStep2();
+}
+
+// 단계 0: 참여 곡 선택
+function renderStep0(){
+  const songArr=Object.entries(songs).map(([id,s])=>({id,...s}));
+  const wrap=document.getElementById('step0View');
+  if(!songArr.length){
+    wrap.innerHTML=`<div class="card fade"><div class="card-title"><span class="step-badge">1단계</span> 참여 곡 선택</div><div class="card-sub">집부가 곡을 등록하면 여기에 표시됩니다.</div></div>`;
+    return;
+  }
+  wrap.innerHTML=`<div class="card fade">
+    <div class="card-title"><span class="step-badge">1단계</span> 참여하는 곡을 선택해주세요</div>
+    <div class="card-sub">본인이 합주에 참여하는 곡을 모두 선택하세요.</div>
+    <div class="song-chips">${songArr.map(s=>`<div class="song-chip${localData.songs.includes(s.id)?' selected':''}" onclick="toggleSong('${s.id}')">${s.title}</div>`).join('')}</div>
+    <button class="btn btn-accent" style="width:100%;margin-top:8px;" onclick="nextStep(0)">다음 →</button>
+    <div class="err" id="step0err"></div>
+  </div>`;
+}
+
+window.toggleSong=function(id){
+  const idx=localData.songs.indexOf(id);
+  if(idx>=0) localData.songs.splice(idx,1); else localData.songs.push(id);
+  renderStep0();
+};
+
+function nextStep(n){
+  if(n===0){
+    if(!localData.songs.length){document.getElementById('step0err').textContent='최소 1곡 이상 선택해주세요.';return;}
+    setStep(1);
+  } else if(n===1){
+    setStep(2);
+  } else if(n===2){
+    submitVote();
+  }
+}
+window.nextStep=nextStep;
+
+// 단계 1: 불가능한 요일 선택
+function renderStep1(){
+  const wrap=document.getElementById('step1View');
+  wrap.innerHTML=`<div class="card fade">
+    <div class="card-title"><span class="step-badge">2단계</span> 불가능한 요일을 선택해주세요</div>
+    <div class="card-sub"><span style="color:var(--red);font-weight:600;text-decoration:underline;text-underline-offset:3px;">참여할 수 없는</span> 요일을 선택하세요. 선택하면 빨간색으로 표시됩니다. (없으면 선택 안 해도 됩니다)</div>
+    <div class="day-grid">${DAYS.map(d=>{
+      const imp=localData.impossibleDays.includes(d);
+      return`<div class="day-btn${imp?' impossible':''}" onclick="toggleDay('${d}')">${d}</div>`;
+    }).join('')}</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px;">빨간색 = 불가능</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn" style="flex:1;" onclick="setStep(0)">← 이전</button>
+      <button class="btn btn-accent" style="flex:2;" onclick="nextStep(1)">다음 →</button>
+    </div>
+  </div>`;
+}
+
+window.toggleDay=function(d){
+  const idx=localData.impossibleDays.indexOf(d);
+  if(idx>=0) localData.impossibleDays.splice(idx,1); else localData.impossibleDays.push(d);
+  renderStep1();
+};
+
+// 단계 2: 가능 시간대 입력
+function renderStep2(){
+  const possibleDays=DAYS.filter(d=>!localData.impossibleDays.includes(d));
+  const wrap=document.getElementById('step2View');
+  if(!possibleDays.length){
+    wrap.innerHTML=`<div class="card fade">
+      <div class="card-title"><span class="step-badge">3단계</span> 가능 시간대 입력</div>
+      <div class="card-sub" style="color:var(--red);">모든 요일이 불가능으로 선택되었습니다. 이전 단계로 돌아가 수정해주세요.</div>
+      <button class="btn" style="width:100%;" onclick="setStep(1)">← 이전</button>
+    </div>`;
+    return;
+  }
+  let slotsHtml='';
+  possibleDays.forEach(d=>{
+    if(!localData.timeSlots[d]) localData.timeSlots[d]=[];
+    const slots=localData.timeSlots[d];
+    slotsHtml+=`<div style="margin-bottom:16px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--accent);">${d}요일 <span style="font-size:11px;color:var(--text2);font-weight:400;">${WEEKEND.includes(d)?'(주말: 09:00~22:00)':'(평일: 15:00~22:00)'}</span></div>
+      <div id="slots_${d}" class="time-slot-list">${slots.map((s,i)=>slotHtml(d,i,s)).join('')}</div>
+      <button class="btn btn-sm" onclick="addSlot('${d}')" style="margin-top:4px;">+ 시간대 추가</button>
+    </div>`;
+  });
+  wrap.innerHTML=`<div class="card fade">
+    <div class="card-title"><span class="step-badge">3단계</span> 가능한 시간대를 입력해주세요</div>
+    <div class="card-sub">요일별로 가능한 시간의 시작~끝을 선택하세요. 중간에 일정이 있다면 시간대를 나눠서 추가하세요.</div>
+    ${slotsHtml}
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn" style="flex:1;" onclick="setStep(1)">← 이전</button>
+      <button class="btn btn-accent" style="flex:2;" onclick="nextStep(2)">제출하기</button>
+    </div>
+    <div class="err" id="step2err"></div>
+  </div>`;
+}
+
+function slotHtml(day,idx,slot){
+  const isWeekend=WEEKEND.includes(day);
+  const startH=isWeekend?9:15;
+  const endH=22;
+  function opts(selected){
+    let o='<option value="">선택</option>';
+    for(let h=startH;h<=endH;h++){
+      o+=`<option value="${h}:00"${selected===h+':00'?' selected':''} >${h}:00</option>`;
+      if(h<endH) o+=`<option value="${h}:30"${selected===h+':30'?' selected':''} >${h}:30</option>`;
+    }
+    return o;
+  }
+  return`<div class="time-slot" id="slot_${day}_${idx}">
+    <select onchange="updateSlot('${day}',${idx},'start',this.value)">${opts(slot.start||'')}</select>
+    <span class="time-slot-sep">~</span>
+    <select onchange="updateSlot('${day}',${idx},'end',this.value)">${opts(slot.end||'')}</select>
+    <button class="btn btn-sm btn-danger" onclick="removeSlot('${day}',${idx})" style="flex-shrink:0;">✕</button>
+  </div>`;
+}
+
+window.addSlot=function(day){
+  if(!localData.timeSlots[day]) localData.timeSlots[day]=[];
+  localData.timeSlots[day].push({start:'',end:''});
+  renderStep2();
+};
+window.removeSlot=function(day,idx){
+  localData.timeSlots[day].splice(idx,1);
+  renderStep2();
+};
+window.updateSlot=function(day,idx,key,val){
+  if(!localData.timeSlots[day]) localData.timeSlots[day]=[];
+  if(!localData.timeSlots[day][idx]) localData.timeSlots[day][idx]={};
+  localData.timeSlots[day][idx][key]=val;
+};
+
+// 제출
+async function submitVote(){
+  const possibleDays=DAYS.filter(d=>!localData.impossibleDays.includes(d));
+  // 검증: 가능 요일 중 시간대 미입력 확인
+  let hasSlot=false;
+  for(const d of possibleDays){
+    const slots=(localData.timeSlots[d]||[]).filter(s=>s.start&&s.end);
+    if(slots.length>0){hasSlot=true;break;}
+  }
+  if(!hasSlot){document.getElementById('step2err').textContent='최소 하나의 가능 시간대를 입력해주세요.';return;}
+
+  // 슬롯 유효성
+  for(const d of possibleDays){
+    const slots=(localData.timeSlots[d]||[]).filter(s=>s.start||s.end);
+    for(const s of slots){
+      if(!s.start||!s.end){document.getElementById('step2err').textContent='시작/끝 시간을 모두 선택해주세요.';return;}
+    }
+  }
+
+  const payload={
+    name:currentUser,
+    isFar,farRegion,
+    isMultiDay,
+    songs:localData.songs,
+    impossibleDays:localData.impossibleDays,
+    timeSlots:Object.fromEntries(
+      Object.entries(localData.timeSlots).map(([d,slots])=>[d,slots.filter(s=>s.start&&s.end)])
+    ),
+    submittedAt:Date.now()
+  };
+  await set(ref(db,`sched_votes/${currentUser}`),payload);
+
+  // 완료 화면
+  [0,1,2].forEach(i=>document.getElementById('step'+i+'View').style.display='none');
+  document.getElementById('doneMsgView').style.display='block';
+  updateProgress(3);
+}
+
+// ── 집부 모드 ──
+function switchAdminTab(n){
+  adminTabN=n;
+  [0,1,2].forEach(i=>{
+    const el=document.getElementById('atab'+i);
+    el.style.background=i===n?'var(--bg3)':'';
+    el.style.color=i===n?'var(--text)':'';
+    document.getElementById('adminTab'+i).style.display=i===n?'block':'none';
+  });
+  renderAdminTab(n);
+}
+window.switchAdminTab=switchAdminTab;
+
+function renderAdminTab(n){
+  if(n===0) renderAdminSongs();
+  else if(n===1) renderAdminStatus();
+  else if(n===2) renderAdminSchedule();
+}
+
+// 탭0: 곡 관리
+function renderAdminSongs(){
+  const wrap=document.getElementById('adminTab0');
+  const songArr=Object.entries(songs).map(([id,s])=>({id,...s}));
+
+  // 멤버 목록
+  get(ref(db,'sched_members')).then(snap=>{
+    const members=snap.val()||{};
+    const memberList=Object.values(members).map(m=>m.name||m);
+    wrap.innerHTML=`
+      <div class="admin-section">
+        <h3>👥 참여 부원 등록 (이름 기입 시 접속 가능)</h3>
+        <div class="add-row" style="margin-bottom:8px;">
+          <input type="text" id="newMemberInput" placeholder="부원 이름 (예: 홍길동)" maxlength="10" onkeydown="if(event.key==='Enter')addMember()" />
+          <button class="btn btn-accent btn-sm" onclick="addMember()">추가</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${memberList.map(m=>`<span style="font-size:12px;padding:4px 10px;border-radius:99px;background:var(--bg3);border:0.5px solid var(--border2);display:flex;align-items:center;gap:6px;">${m}<button onclick="removeMember('${m}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0;">✕</button></span>`).join('')}
+          ${!memberList.length?'<span style="font-size:12px;color:var(--text3);">아직 없어요.</span>':''}
+        </div>
+      </div>
+      <div class="admin-section">
+        <h3>🎵 곡 추가</h3>
+        <div class="add-row">
+          <input type="text" id="newSongInput" placeholder="곡 제목" onkeydown="if(event.key==='Enter')addSong()" />
+          <button class="btn btn-accent btn-sm" onclick="addSong()">추가</button>
+        </div>
+      </div>
+      <div class="admin-section">
+        <h3>곡 목록 및 세션 배정</h3>
+        ${songArr.length?songArr.map(s=>songAdminCard(s)).join(''):'<div style="color:var(--text3);font-size:13px;">아직 등록된 곡이 없어요.</div>'}
+      </div>`;
+  });
+}
+
+function songAdminCard(s){
+  const sessions=s.sessions||{};
+  return`<div style="background:var(--bg3);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <span style="font-size:14px;font-weight:600;">${s.title}</span>
+      <button class="btn btn-sm btn-danger" onclick="deleteSong('${s.id}')">삭제</button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">세션 담당자 입력</div>
+    <div class="session-grid">
+      ${SESSIONS.map(sess=>{
+        const val=sessions[sess]||'';
+        return`<div class="session-slot">
+          <div class="session-slot-name">${sess}</div>
+          <input type="text" placeholder="이름" value="${val}" onchange="updateSession('${s.id}','${sess}',this.value)" style="font-size:12px;padding:5px 8px;" />
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+window.addSong=async function(){
+  const v=document.getElementById('newSongInput').value.trim();
+  if(!v) return;
+  await push(ref(db,'sched_songs'),{title:v,sessions:{},createdAt:Date.now()});
+  document.getElementById('newSongInput').value='';
+};
+window.deleteSong=async function(id){
+  if(!confirm('삭제할까요?')) return;
+  await remove(ref(db,`sched_songs/${id}`));
+};
+window.updateSession=async function(songId,sess,val){
+  await set(ref(db,`sched_songs/${songId}/sessions/${sess}`),val||null);
+};
+
+// 멤버 관리
+window.addMember=async function(){
+  const v=document.getElementById('newMemberInput')?.value.trim();
+  if(!v) return;
+  const snap=await get(ref(db,'sched_members'));
+  const members=snap.val()||{};
+  const existing=Object.values(members).find(m=>(m.name||m)===v);
+  if(existing){alert('이미 등록된 이름이에요.');return;}
+  await push(ref(db,'sched_members'),{name:v});
+  document.getElementById('newMemberInput').value='';
+  renderAdminSongs();
+};
+window.removeMember=async function(name){
+  if(!confirm(`${name}님을 목록에서 삭제할까요?`)) return;
+  const snap=await get(ref(db,'sched_members'));
+  const members=snap.val()||{};
+  const key=Object.keys(members).find(k=>(members[k].name||members[k])===name);
+  if(key) await remove(ref(db,`sched_members/${key}`));
+  renderAdminSongs();
+};
+
+// 멤버 상세 모달
+window.showMemberDetail=function(name){
+  const v=Object.values(votes).find(vt=>vt.name===name);
+  if(!v){return;}
+  document.getElementById('memberDetailName').innerHTML=
+    `<span>${name}${v.isFar?` <span class="far-tag">원거리${v.farRegion?' ('+v.farRegion+')':''}</span>`:''}님의 가능 시간</span>
+     <button class="detail-modal-close" onclick="closeMemberDetailBtn()">✕</button>`;
+
+  let html='';
+
+  // 참여 곡
+  const songTitles=(v.songs||[]).map(id=>songs[id]?.title||id);
+  html+=`<div style="margin-bottom:14px;">
+    <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">참여 곡</div>
+    <div class="detail-songs">${songTitles.length?songTitles.map(t=>`<span class="detail-song-tag">${t}</span>`).join(''):'<span style="color:var(--text3);font-size:12px;">없음</span>'}</div>
+  </div>`;
+
+  // 불가 요일
+  const imp=v.impossibleDays||[];
+  if(imp.length){
+    html+=`<div class="detail-impossible">❌ 불가 요일: ${imp.join(', ')}</div>`;
+  }
+
+  // 요일별 가능 시간
+  const possibleDays=DAYS.filter(d=>!imp.includes(d));
+  possibleDays.forEach(d=>{
+    const slots=(v.timeSlots||{})[d]||[];
+    const validSlots=slots.filter(s=>s.start&&s.end);
+    html+=`<div class="detail-day-block">
+      <div class="detail-day-title">${d}요일 ${WEEKEND.includes(d)?'(주말)':'(평일)'}</div>
+      ${validSlots.length
+        ?validSlots.map(s=>`<div class="detail-slot-row">🕐 ${s.start} ~ ${s.end}</div>`).join('')
+        :'<div style="font-size:12px;color:var(--text3);">시간대 미입력</div>'}
+    </div>`;
+  });
+
+  document.getElementById('memberDetailBody').innerHTML=html;
+  document.getElementById('memberDetailOverlay').style.display='flex';
+};
+
+window.closeMemberDetailBtn=function(){
+  document.getElementById('memberDetailOverlay').style.display='none';
+};
+window.closeMemberDetail=function(e){
+  if(e.target.id==='memberDetailOverlay')
+    document.getElementById('memberDetailOverlay').style.display='none';
+};
+
+// 탭1: 투표 현황
+function renderAdminStatus(){
+  const wrap=document.getElementById('adminTab1');
+  const voteArr=Object.values(votes);
+  const songArr=Object.entries(songs).map(([id,s])=>({id,...s}));
+
+  // 각 곡의 세션 담당자 목록
+  const songMemberMap={};
+  songArr.forEach(s=>{
+    const members=Object.values(s.sessions||{}).filter(v=>v);
+    songMemberMap[s.id]={title:s.title,members};
+  });
+
+  // 투표 완료 여부: 투표자 목록에 해당 부원이 있는지
+  const voterNames=new Set(voteArr.map(v=>v.name));
+
+  // 곡별 완료 여부
+  const songStatusHtml=songArr.map(s=>{
+    const members=Object.values(s.sessions||{}).filter(v=>v);
+    if(!members.length) return`<div class="song-status-row" style="border-color:var(--border);">
+      <span class="song-status-name" style="color:var(--text2);">${s.title}</span>
+      <span style="font-size:12px;color:var(--text3);">세션 미배정</span>
+    </div>`;
+    const allDone=members.every(m=>voterNames.has(m));
+    return`<div class="song-status-row ${allDone?'all-done':'not-done'}">
+      <span class="song-status-name ${allDone?'all-done':'not-done'}">${s.title}</span>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">
+        ${members.map(m=>`<span class="member-song-tag ${voterNames.has(m)?'done':'undone'}">${m}</span>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  // 투표자 상세 (이름 클릭 시 모달)
+  const voterDetailHtml=voteArr.map(v=>`<div class="member-row">
+    <span class="member-name done member-name-btn" onclick="showMemberDetail('${v.name}')">${v.name}${v.isFar?`<span class="far-tag">원거리${v.farRegion?' ('+v.farRegion+')':''}</span>`:''}✓</span>
+    <div style="flex:1;font-size:12px;color:var(--text2);">
+      불가: ${v.impossibleDays&&v.impossibleDays.length?v.impossibleDays.join(', '):'없음'} |
+      곡: ${(v.songs||[]).map(id=>songs[id]?.title||id).join(', ')||'없음'}
+    </div>
+  </div>`).join('');
+
+  // 미투표자
+  const allMembers=new Set();
+  songArr.forEach(s=>Object.values(s.sessions||{}).filter(v=>v).forEach(m=>allMembers.add(m)));
+  const undoneHtml=[...allMembers].filter(m=>!voterNames.has(m)).map(m=>`<div class="member-row">
+    <span class="member-name undone">${m} ✗</span>
+    <span style="font-size:12px;color:var(--text3);">미완료</span>
+  </div>`).join('');
+
+  wrap.innerHTML=`
+    <div class="admin-section">
+      <h3>곡별 완료 현황</h3>
+      <div class="song-status-list">${songStatusHtml||'<div style="color:var(--text3);font-size:13px;">곡이 없어요.</div>'}</div>
+    </div>
+    <div class="admin-section">
+      <h3>투표 완료자 (${voteArr.length}명) <span style="font-size:11px;color:var(--text2);font-weight:400;">이름 클릭 시 가능 시간 상세 확인</span></h3>
+      <div class="member-status-grid">${voterDetailHtml||'<div style="color:var(--text3);font-size:13px;">아직 없어요.</div>'}</div>
+    </div>
+    <div class="admin-section">
+      <h3>미완료자</h3>
+      <div class="member-status-grid">${undoneHtml||'<div style="color:var(--green);font-size:13px;">모두 완료!</div>'}</div>
+    </div>`;
+}
+
+// 탭2: 시간표 생성
+function renderAdminSchedule(){
+  const wrap=document.getElementById('adminTab2');
+  const voteArr=Object.values(votes);
+  const songArr=Object.entries(songs).map(([id,s])=>({id,...s}));
+  if(!voteArr.length||!songArr.length){
+    wrap.innerHTML='<div class="card"><div style="color:var(--text2);font-size:13px;text-align:center;padding:20px;">투표 데이터나 곡이 없어요.</div></div>';
+    return;
+  }
+
+  // 각 곡의 참여 인원 + 불가 요일/가능 시간 계산
+  const schedules=generateSchedules(songArr,voteArr);
+
+  if(!schedules.length){
+    wrap.innerHTML='<div class="card"><div style="color:var(--text2);font-size:13px;text-align:center;padding:20px;">가능한 시간표를 생성할 수 없어요. 투표 데이터를 확인해주세요.</div></div>';
+    return;
+  }
+
+  wrap.innerHTML=`<div style="margin-bottom:12px;" class="notice"><span class="notice-dot"></span>🚌 원거리(하루 우선) &nbsp;|&nbsp; 📅 이틀이상가능 &nbsp;|&nbsp; 추천 시간표가 상단에 표시됩니다. 이미지 저장으로 저장할 수 있어요.</div>`+
+    schedules.map((sc,i)=>timetableCardHtml(sc,i===0,i)).join('');
+
+  // html2canvas 로드
+  if(!window.html2canvas){
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    document.head.appendChild(s);
+  }
+}
+
+function generateSchedules(songArr,voteArr){
+  const results=[];
+  const farVoters=voteArr.filter(v=>v.isFar);
+
+  // ── 곡별 참여자 정보 ──
+  const songParticipants={};
+  songArr.forEach(s=>{
+    const sessMembers=Object.values(s.sessions||{}).filter(v=>v);
+    const voters=voteArr.filter(v=>sessMembers.includes(v.name));
+    const hasFar=voters.some(v=>v.isFar);
+    songParticipants[s.id]={title:s.title,members:sessMembers,voters,hasFar,song:s};
+  });
+
+  // ── 후보 요일: 전체 투표자 중 절반 이상 가능한 요일 ──
+  const candidateDays=DAYS.filter(d=>{
+    const possible=voteArr.filter(v=>!(v.impossibleDays||[]).includes(d));
+    return possible.length>=Math.ceil(voteArr.length/2);
+  });
+
+  if(!candidateDays.length){
+    results.push(generateFallbackSchedule(songArr,voteArr,songParticipants));
+    return results;
+  }
+
+  // ── 요일 조합 (2~3일) ──
+  const dayCombos=[];
+  for(let i=0;i<candidateDays.length;i++){
+    for(let j=i+1;j<candidateDays.length;j++){
+      dayCombos.push([candidateDays[i],candidateDays[j]]);
+      for(let k=j+1;k<candidateDays.length;k++){
+        dayCombos.push([candidateDays[i],candidateDays[j],candidateDays[k]]);
+      }
+    }
+  }
+
+  dayCombos.slice(0,8).forEach(combo=>{
+    const sc=buildSchedule(combo,songArr,voteArr,songParticipants,farVoters);
+    if(sc) results.push(sc);
+  });
+
+  // ── 점수 기준 정렬 ──
+  // 커버 곡 수 많을수록, 날짜 적을수록, 원거리 집중도 높을수록 좋음
+  results.sort((a,b)=>{
+    const sA=a.coveredSongs*10 - a.days.length*3 + a.farScore*2;
+    const sB=b.coveredSongs*10 - b.days.length*3 + b.farScore*2;
+    return sB-sA;
+  });
+
+  return results.slice(0,4);
+}
+
+function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
+  const schedule={days:[],coveredSongs:0,farScore:0,label:days.join('·')+'요일'};
+  const assigned=new Set();
+  const INTERVAL=15;
+
+  // 원거리 부원 이름 목록
+  const farNames=new Set(farVoters.map(v=>v.name));
+  // 이틀 이상 가능한 부원 이름 목록
+  const multiDayNames=new Set(voteArr.filter(v=>v.isMultiDay).map(v=>v.name));
+
+  days.forEach(day=>{
+    const isWeekend=WEEKEND.includes(day);
+    const dayStartMin=isWeekend?9*60:15*60;
+    const dayHardEnd=isWeekend?22*60:21*60;
+    const normalEndMin=isWeekend?19*60:21*60;
+    const farEndMin=19*60;
+    const weekendPreferStart=12*60;
+
+    const daySongs=songArr.filter(s=>{
+      if(assigned.has(s.id)) return false;
+      const sp=songParticipants[s.id];
+      if(!sp||!sp.voters.length) return true;
+      return sp.voters.every(v=>{
+        if((v.impossibleDays||[]).includes(day)) return false;
+        const daySlots=(v.timeSlots||{})[day]||[];
+        return daySlots.some(ts=>{
+          if(!ts.start||!ts.end) return false;
+          const [sh,sm]=ts.start.split(':').map(Number);
+          const [eh,em]=ts.end.split(':').map(Number);
+          return sh*60+sm<dayHardEnd && eh*60+em>dayStartMin;
+        });
+      });
+    });
+
+    if(!daySongs.length) return;
+
+    const totalSongs=daySongs.length;
+    let slotDur;
+    if(totalSongs<=2) slotDur=90;
+    else if(totalSongs<=4) slotDur=75;
+    else slotDur=60;
+
+    let cursor=dayStartMin;
+    if(isWeekend) cursor=Math.max(dayStartMin,weekendPreferStart);
+
+    const slots=[];
+
+    // 원거리이고 multiDay 아닌 부원이 있는 곡 → 하루에 몰아서 먼저 배치
+    const farOnlySongs=daySongs.filter(s=>{
+      const sp=songParticipants[s.id];
+      return sp.hasFar && sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name));
+    });
+    const otherSongs=daySongs.filter(s=>!farOnlySongs.includes(s));
+    const orderedSongs=[...farOnlySongs,...otherSongs];
+
+    orderedSongs.forEach(s=>{
+      const sp=songParticipants[s.id];
+      const hasFarOnly=sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name));
+      const songEndLimit=hasFarOnly?farEndMin:(isWeekend?normalEndMin:normalEndMin);
+
+      if(cursor+slotDur>songEndLimit){
+        if(hasFarOnly) return;
+        if(cursor+slotDur>dayHardEnd) return;
+      }
+
+      const canPlace=!sp.voters.length||sp.voters.every(v=>{
+        if((v.impossibleDays||[]).includes(day)) return false;
+        const daySlots=(v.timeSlots||{})[day]||[];
+        return daySlots.some(ts=>{
+          if(!ts.start||!ts.end) return false;
+          const [sh,sm]=ts.start.split(':').map(Number);
+          const [eh,em]=ts.end.split(':').map(Number);
+          return sh*60+sm<=cursor && eh*60+em>=cursor+slotDur;
+        });
+      });
+
+      if(!canPlace) return;
+
+      const fmt=n=>String(n).padStart(2,'0');
+      const startH=Math.floor(cursor/60),startM=cursor%60;
+      const endMin=cursor+slotDur;
+      const endH=Math.floor(endMin/60),endM=endMin%60;
+      const mark=hasFarOnly?' 🚌':sp.voters.some(v=>multiDayNames.has(v.name))?' 📅':'';
+      slots.push({
+        time:`${fmt(startH)}:${fmt(startM)}~${fmt(endH)}:${fmt(endM)}`,
+        song:s.title+mark,
+        members:Object.values(s.sessions||{}).filter(v=>v).join(', '),
+        duration:slotDur
+      });
+      assigned.add(s.id);
+      cursor+=slotDur+INTERVAL;
+    });
+
+    if(slots.length) schedule.days.push({day,slots,slotDur});
+  });
+
+  schedule.coveredSongs=assigned.size;
+
+  // 원거리(단일) 점수
+  if(farVoters.filter(v=>!multiDayNames.has(v.name)).length&&schedule.days.length){
+    const farDayCount=schedule.days.filter(d=>
+      d.slots.some(sl=>sl.song.includes('🚌'))
+    ).length;
+    schedule.farScore=Math.max(0,schedule.days.length-farDayCount+1)*farVoters.length;
+  }
+
+  return schedule.days.length?schedule:null;
+}
+
+function generateFallbackSchedule(songArr,voteArr,songParticipants){
+  const sc={days:[],coveredSongs:0,farScore:0,label:'기본 시간표 (데이터 부족)'};
+  const farVoters=voteArr.filter(v=>v.isFar);
+  let cursor=12*60; // 주말 기본 12:00 시작
+  const slots=[];
+  const slotDur=90;
+  songArr.slice(0,6).forEach(s=>{
+    const sp=songParticipants[s.id];
+    const farMark=sp&&sp.hasFar?' 🚌':'';
+    const endMin=cursor+slotDur;
+    const fmt=n=>String(n).padStart(2,'0');
+    slots.push({
+      time:`${fmt(Math.floor(cursor/60))}:${fmt(cursor%60)}~${fmt(Math.floor(endMin/60))}:${fmt(endMin%60)}`,
+      song:s.title+farMark,
+      members:Object.values(s.sessions||{}).filter(v=>v).join(', '),
+      duration:slotDur
+    });
+    cursor+=slotDur+15;
+  });
+  sc.days.push({day:'토',slots,slotDur});
+  sc.coveredSongs=slots.length;
+  return sc;
+}
+
+function timetableCardHtml(sc,isRecommended,idx){
+  const farVoters=Object.values(votes).filter(v=>v.isFar);
+  const farNote=farVoters.length?`<div style="font-size:12px;color:var(--red);margin-top:4px;">원거리(${farVoters.map(v=>v.name+(v.farRegion?' ('+v.farRegion+')':'')).join(', ')}) 고려됨</div>`:'';
+
+  const daysHtml=sc.days.map(d=>{
+    const durLabel=d.slotDur===90?'1시간 30분':d.slotDur===75?'1시간 15분':'1시간';
+    return`<div class="schedule-day">
+      <div class="schedule-day-title">📅 ${d.day}요일 <span style="font-size:12px;color:var(--text2);font-weight:400;">합주 ${durLabel}</span></div>
+      ${d.slots.map(s=>`<div class="schedule-slot">
+        <div class="schedule-time">${s.time}</div>
+        <div><div class="schedule-song">${s.song}</div><div class="schedule-members">${s.members||'세션 미배정'}</div></div>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+
+  return`<div class="timetable-card${isRecommended?' recommended':''}" id="timetable_${idx}">
+    <div class="timetable-header">
+      <div>
+        <div class="timetable-title">${isRecommended?'⭐ ':''} ${sc.label} <span style="font-size:12px;color:var(--text2);">(${sc.coveredSongs}곡)</span></div>
+        ${isRecommended?'<div style="font-size:12px;color:var(--accent);margin-top:2px;">추천 시간표</div>':''}
+        ${farNote}
+      </div>
+      <div style="display:flex;gap:6px;align-items:flex-start;">
+        ${isRecommended?'<span class="recommend-badge">추천</span>':''}
+        <button class="save-img-btn" onclick="saveAsImage('timetable_${idx}','시간표_${sc.label}')">🖼 이미지 저장</button>
+      </div>
+    </div>
+    <div class="schedule-wrap">${daysHtml}</div>
+  </div>`;
+}
+
+window.saveAsImage=async function(elId,filename){
+  if(!window.html2canvas){alert('잠시 후 다시 시도해주세요.');return;}
+  const el=document.getElementById(elId);
+  const canvas=await html2canvas(el,{backgroundColor:'#1a1a1a',scale:2});
+  const a=document.createElement('a');
+  a.download=(filename||'시간표')+'.png';
+  a.href=canvas.toDataURL('image/png');
+  a.click();
+};
+
+// 초기화 완료
+
+</script>
+<script>
+// login을 module 밖에서도 접근 가능하도록
+</script>
+</body>
+</html>
