@@ -692,23 +692,27 @@ function renderAdminSongs(){
   });
 }
 
+const SESSION_NAMES=['vocal','drum','guitar1','guitar2','keys1','keys2','bass'];
+const SESSION_LABELS={vocal:'보컬',drum:'드럼',guitar1:'기타1',guitar2:'기타2',keys1:'건반1',keys2:'건반2',bass:'베이스'};
+
 function songAdminCard(s){
   const sessions=s.sessions||{};
+  const sessionHtml=SESSION_NAMES.map(sessId=>{
+    const val=sessions[sessId];
+    // null, 빈값, 없음 제외
+    const isEmpty=!val||val==='없음'||val.trim()==='';
+    return`<div style="background:var(--bg4);border:0.5px solid var(--border);border-radius:var(--radius);padding:8px 10px;">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">${SESSION_LABELS[sessId]}</div>
+      <div style="font-size:13px;${isEmpty?'color:var(--text3);':'color:var(--text);font-weight:500;'}">${isEmpty?'—':val}</div>
+    </div>`;
+  }).join('');
+
   return`<div style="background:var(--bg3);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <span style="font-size:14px;font-weight:600;">${s.title}</span>
       <button class="btn btn-sm btn-danger" onclick="deleteSong('${s.id}')">삭제</button>
     </div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">세션 담당자 입력</div>
-    <div class="session-grid">
-      ${SESSIONS.map(sess=>{
-        const val=sessions[sess]||'';
-        return`<div class="session-slot">
-          <div class="session-slot-name">${sess}</div>
-          <input type="text" placeholder="이름" value="${val}" onchange="updateSession('${s.id}','${sess}',this.value)" style="font-size:12px;padding:5px 8px;" />
-        </div>`;
-      }).join('')}
-    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;">${sessionHtml}</div>
   </div>`;
 }
 
@@ -795,34 +799,40 @@ window.closeMemberDetail=function(e){
     document.getElementById('memberDetailOverlay').style.display='none';
 };
 
+// null, 빈값, '없음' 필터링 공통 함수
+function validMembers(sessions){
+  return Object.values(sessions||{}).filter(v=>v&&v!=='없음'&&v.trim()!=='');
+}
+function validMemberEntries(sessions){
+  return Object.entries(sessions||{}).filter(([,v])=>v&&v!=='없음'&&v.trim()!=='');
+}
+
 // 탭1: 투표 현황
 function renderAdminStatus(){
   const wrap=document.getElementById('adminTab1');
   const voteArr=Object.values(votes);
   const songArr=Object.entries(songs).map(([id,s])=>({id,...s}));
 
-  // 각 곡의 세션 담당자 목록
-  const songMemberMap={};
-  songArr.forEach(s=>{
-    const members=Object.values(s.sessions||{}).filter(v=>v);
-    songMemberMap[s.id]={title:s.title,members};
-  });
-
-  // 투표 완료 여부: 투표자 목록에 해당 부원이 있는지
   const voterNames=new Set(voteArr.map(v=>v.name));
 
-  // 곡별 완료 여부
+  // 곡별 완료 현황 (없음 제외)
   const songStatusHtml=songArr.map(s=>{
-    const members=Object.values(s.sessions||{}).filter(v=>v);
+    const members=validMembers(s.sessions);
+    const sessionEntries=validMemberEntries(s.sessions);
     if(!members.length) return`<div class="song-status-row" style="border-color:var(--border);">
       <span class="song-status-name" style="color:var(--text2);">${s.title}</span>
       <span style="font-size:12px;color:var(--text3);">세션 미배정</span>
     </div>`;
     const allDone=members.every(m=>voterNames.has(m));
     return`<div class="song-status-row ${allDone?'all-done':'not-done'}">
-      <span class="song-status-name ${allDone?'all-done':'not-done'}">${s.title}</span>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;">
-        ${members.map(m=>`<span class="member-song-tag ${voterNames.has(m)?'done':'undone'}">${m}</span>`).join('')}
+      <div style="flex:1;min-width:0;">
+        <span class="song-status-name ${allDone?'all-done':'not-done'}">${s.title}</span>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+          ${sessionEntries.map(([sessId,m])=>`
+            <span class="member-song-tag ${voterNames.has(m)?'done':'undone'}" title="${SESSION_LABELS[sessId]||sessId}">
+              ${m} <span style="font-size:10px;opacity:.7;">(${SESSION_LABELS[sessId]||sessId})</span>
+            </span>`).join('')}
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -836,9 +846,9 @@ function renderAdminStatus(){
     </div>
   </div>`).join('');
 
-  // 미투표자
+  // 미투표자 (없음 제외)
   const allMembers=new Set();
-  songArr.forEach(s=>Object.values(s.sessions||{}).filter(v=>v).forEach(m=>allMembers.add(m)));
+  songArr.forEach(s=>validMembers(s.sessions).forEach(m=>allMembers.add(m)));
   const undoneHtml=[...allMembers].filter(m=>!voterNames.has(m)).map(m=>`<div class="member-row">
     <span class="member-name undone">${m} ✗</span>
     <span style="font-size:12px;color:var(--text3);">미완료</span>
@@ -892,10 +902,10 @@ function generateSchedules(songArr,voteArr){
   const results=[];
   const farVoters=voteArr.filter(v=>v.isFar);
 
-  // ── 곡별 참여자 정보 ──
+  // ── 곡별 참여자 정보 (없음 제외) ──
   const songParticipants={};
   songArr.forEach(s=>{
-    const sessMembers=Object.values(s.sessions||{}).filter(v=>v);
+    const sessMembers=validMembers(s.sessions);
     const voters=voteArr.filter(v=>sessMembers.includes(v.name));
     const hasFar=voters.some(v=>v.isFar);
     songParticipants[s.id]={title:s.title,members:sessMembers,voters,hasFar,song:s};
@@ -1040,7 +1050,7 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
       slots.push({
         time:`${fmt(startH)}:${fmt(startM)}~${fmt(endH)}:${fmt(endM)}`,
         song:s.title+mark,
-        members:Object.values(s.sessions||{}).filter(v=>v).join(', '),
+        members:validMembers(s.sessions).join(', '),
         duration:slotDur
       });
       assigned.add(s.id);
@@ -1080,7 +1090,7 @@ function generateFallbackSchedule(songArr,voteArr,songParticipants){
     slots.push({
       time:`${fmt(Math.floor(cursor/60))}:${fmt(cursor%60)}~${fmt(Math.floor(endMin/60))}:${fmt(endMin%60)}`,
       song:s.title+farMark,
-      members:Object.values(s.sessions||{}).filter(v=>v).join(', '),
+      members:validMembers(s.sessions).join(', '),
       duration:slotDur
     });
     cursor+=slotDur+15;
@@ -1092,18 +1102,37 @@ function generateFallbackSchedule(songArr,voteArr,songParticipants){
 
 function timetableCardHtml(sc,isRecommended,idx){
   const farVoters=Object.values(votes).filter(v=>v.isFar);
-  const farNote=farVoters.length?`<div style="font-size:12px;color:var(--red);margin-top:4px;">원거리(${farVoters.map(v=>v.name+(v.farRegion?' ('+v.farRegion+')':'')).join(', ')}) 고려됨</div>`:'';
+  const farNote=farVoters.length?`<div style="font-size:12px;color:#ff6b6b;margin-top:4px;">🚌 원거리 고려: ${farVoters.map(v=>v.name+(v.farRegion?' ('+v.farRegion+')':'')).join(', ')}</div>`:'';
 
-  const daysHtml=sc.days.map(d=>{
-    const durLabel=d.slotDur===90?'1시간 30분':d.slotDur===75?'1시간 15분':'1시간';
-    return`<div class="schedule-day">
-      <div class="schedule-day-title">📅 ${d.day}요일 <span style="font-size:12px;color:var(--text2);font-weight:400;">합주 ${durLabel}</span></div>
-      ${d.slots.map(s=>`<div class="schedule-slot">
-        <div class="schedule-time">${s.time}</div>
-        <div><div class="schedule-song">${s.song}</div><div class="schedule-members">${s.members||'세션 미배정'}</div></div>
-      </div>`).join('')}
+  // 요일별 표 생성
+  const tablesHtml=sc.days.map(d=>{
+    const durLabel=d.slotDur===90?'90분':d.slotDur===75?'75분':'60분';
+    const rows=d.slots.map((s,i)=>`
+      <tr>
+        <td style="background:#1e1e1e;color:#e8ff47;font-family:'DM Mono',monospace;font-size:13px;padding:10px 14px;border:1px solid rgba(255,255,255,.1);white-space:nowrap;font-weight:600;">${s.time}</td>
+        <td style="background:#1a1a1a;padding:10px 14px;border:1px solid rgba(255,255,255,.1);font-size:14px;font-weight:700;color:#f0f0f0;">${s.song}</td>
+        <td style="background:#161616;padding:10px 14px;border:1px solid rgba(255,255,255,.1);font-size:12px;color:#aaa;">${s.members||'세션 미배정'}</td>
+      </tr>`).join('');
+    return`<div style="margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="font-size:15px;font-weight:700;color:#f0f0f0;">📅 ${d.day}요일</div>
+        <div style="font-size:12px;color:#888;background:#222;padding:3px 10px;border-radius:99px;border:0.5px solid rgba(255,255,255,.1);">합주 ${durLabel} · ${d.slots.length}곡</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-family:'Noto Sans KR',sans-serif;">
+        <thead>
+          <tr>
+            <th style="background:#252525;color:#e8ff47;font-size:12px;padding:8px 14px;border:1px solid rgba(255,255,255,.15);text-align:left;white-space:nowrap;">시간</th>
+            <th style="background:#252525;color:#e8ff47;font-size:12px;padding:8px 14px;border:1px solid rgba(255,255,255,.15);text-align:left;">곡 제목</th>
+            <th style="background:#252525;color:#e8ff47;font-size:12px;padding:8px 14px;border:1px solid rgba(255,255,255,.15);text-align:left;">참여 세션</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
     </div>`;
   }).join('');
+
+  // 이미지 저장용 캡처 영역 (카드 헤더 제외, 표만)
+  const captureId=`capture_${idx}`;
 
   return`<div class="timetable-card${isRecommended?' recommended':''}" id="timetable_${idx}">
     <div class="timetable-header">
@@ -1114,17 +1143,27 @@ function timetableCardHtml(sc,isRecommended,idx){
       </div>
       <div style="display:flex;gap:6px;align-items:flex-start;">
         ${isRecommended?'<span class="recommend-badge">추천</span>':''}
-        <button class="save-img-btn" onclick="saveAsImage('timetable_${idx}','시간표_${sc.label}')">🖼 이미지 저장</button>
+        <button class="save-img-btn" onclick="saveAsImage('${captureId}','시간표_${sc.label}')">🖼 이미지 저장</button>
       </div>
     </div>
-    <div class="schedule-wrap">${daysHtml}</div>
+    <div id="${captureId}" style="background:#0f0f0f;border-radius:10px;padding:20px;">
+      <div style="font-size:14px;font-weight:700;color:#e8ff47;margin-bottom:4px;font-family:'Noto Sans KR',sans-serif;">🎸 밴드부 합주 시간표</div>
+      <div style="font-size:12px;color:#666;margin-bottom:16px;font-family:'DM Mono',monospace;">${sc.label} · ${sc.coveredSongs}곡${isRecommended?' ⭐ 추천':''}</div>
+      ${tablesHtml}
+      <div style="font-size:11px;color:#444;margin-top:8px;font-family:'DM Mono',monospace;">🚌 원거리하루만 · 🚌📅 원거리이틀가능 · 📅 이틀가능</div>
+    </div>
   </div>`;
 }
 
 window.saveAsImage=async function(elId,filename){
   if(!window.html2canvas){alert('잠시 후 다시 시도해주세요.');return;}
   const el=document.getElementById(elId);
-  const canvas=await html2canvas(el,{backgroundColor:'#1a1a1a',scale:2});
+  const canvas=await html2canvas(el,{
+    backgroundColor:'#0f0f0f',
+    scale:2,
+    useCORS:true,
+    logging:false
+  });
   const a=document.createElement('a');
   a.download=(filename||'시간표')+'.png';
   a.href=canvas.toDataURL('image/png');
