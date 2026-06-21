@@ -416,15 +416,19 @@ function startSync(){
   // 세션 배정 데이터 불러오기 (session_export)
   const u3=onValue(ref(db,'session_export'),snap=>{
     sessionExport=snap.val()||{};
-    // sched_songs가 비어있으면 session_export 기반으로 곡 목록 자동 동기화
-    if(isAdmin&&Object.keys(songs).length===0&&Object.keys(sessionExport).length>0){
+    if(isAdmin&&Object.keys(sessionExport).length>0){
       const updates={};
       Object.entries(sessionExport).forEach(([sid,s])=>{
-        updates[sid]={title:s.title,sessions:{},createdAt:Date.now()};
-        // 세션 담당자 자동 입력
+        const existing=songs[sid]||{};
+        updates[sid]={
+          title:s.title,
+          sessions:{},
+          createdAt:existing.createdAt||Date.now()
+        };
+        // 세션 담당자 입력 (항상 최신 session_export 기준으로 덮어쓰기)
         Object.entries(s.sessions||{}).forEach(([sessId,sessData])=>{
           if(sessData.active&&sessData.members?.length){
-            sessData.members.forEach(m=>{ updates[sid].sessions[sessId]=(updates[sid].sessions[sessId]?updates[sid].sessions[sessId]+', ':'')+m; });
+            updates[sid].sessions[sessId]=sessData.members.join(', ');
           }
         });
       });
