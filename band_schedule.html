@@ -870,7 +870,7 @@ function renderAdminSchedule(){
     return;
   }
 
-  wrap.innerHTML=`<div style="margin-bottom:12px;" class="notice"><span class="notice-dot"></span>🚌 원거리(하루 우선) &nbsp;|&nbsp; 📅 이틀이상가능 &nbsp;|&nbsp; 추천 시간표가 상단에 표시됩니다. 이미지 저장으로 저장할 수 있어요.</div>`+
+  wrap.innerHTML=`<div style="margin-bottom:12px;" class="notice"><span class="notice-dot"></span>🚌 원거리 하루만(1순위) &nbsp;|&nbsp; 🚌📅 원거리+이틀가능(2순위) &nbsp;|&nbsp; 일반(3순위) &nbsp;|&nbsp; 📅 이틀가능만(4순위)</div>`+
     schedules.map((sc,i)=>timetableCardHtml(sc,i===0,i)).join('');
 
   // html2canvas 로드
@@ -979,21 +979,35 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
 
     const slots=[];
 
-    // 원거리이고 multiDay 아닌 부원이 있는 곡 → 하루에 몰아서 먼저 배치
-    const farOnlySongs=daySongs.filter(s=>{
+    // ── 배치 우선순위 4단계 분류 ──
+    // 1순위: 원거리 + 이틀 불가 (하루만 올 수 있음) → 최우선
+    // 2순위: 원거리 + 이틀 가능 → 원거리 차순위
+    // 3순위: 일반 (원거리도 이틀가능도 아님)
+    // 4순위: 이틀가능만 (원거리 아님) → 가장 유연하므로 후순위
+    const tier1=daySongs.filter(s=>{
       const sp=songParticipants[s.id];
-      return sp.hasFar && sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name));
+      return sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name));
     });
-    const otherSongs=daySongs.filter(s=>!farOnlySongs.includes(s));
-    const orderedSongs=[...farOnlySongs,...otherSongs];
+    const tier2=daySongs.filter(s=>{
+      const sp=songParticipants[s.id];
+      return !tier1.includes(s)&&sp.voters.some(v=>farNames.has(v.name)&&multiDayNames.has(v.name));
+    });
+    const tier4=daySongs.filter(s=>{
+      const sp=songParticipants[s.id];
+      return !tier1.includes(s)&&!tier2.includes(s)&&sp.voters.some(v=>!farNames.has(v.name)&&multiDayNames.has(v.name));
+    });
+    const tier3=daySongs.filter(s=>!tier1.includes(s)&&!tier2.includes(s)&&!tier4.includes(s));
+    const orderedSongs=[...tier1,...tier2,...tier3,...tier4];
 
     orderedSongs.forEach(s=>{
       const sp=songParticipants[s.id];
       const hasFarOnly=sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name));
-      const songEndLimit=hasFarOnly?farEndMin:(isWeekend?normalEndMin:normalEndMin);
+      const hasFarMulti=!hasFarOnly&&sp.voters.some(v=>farNames.has(v.name)&&multiDayNames.has(v.name));
+      const hasMultiOnly=!hasFarOnly&&!hasFarMulti&&sp.voters.some(v=>!farNames.has(v.name)&&multiDayNames.has(v.name));
+      const songEndLimit=(hasFarOnly||hasFarMulti)?farEndMin:normalEndMin;
 
       if(cursor+slotDur>songEndLimit){
-        if(hasFarOnly) return;
+        if(hasFarOnly||hasFarMulti) return;
         if(cursor+slotDur>dayHardEnd) return;
       }
 
@@ -1014,7 +1028,8 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
       const startH=Math.floor(cursor/60),startM=cursor%60;
       const endMin=cursor+slotDur;
       const endH=Math.floor(endMin/60),endM=endMin%60;
-      const mark=hasFarOnly?' 🚌':sp.voters.some(v=>multiDayNames.has(v.name))?' 📅':'';
+      // 마크: 🚌원거리하루만 / 🚌📅원거리이틀가능 / 📅이틀가능만
+      const mark=hasFarOnly?' 🚌':hasFarMulti?' 🚌📅':hasMultiOnly?' 📅':'';
       slots.push({
         time:`${fmt(startH)}:${fmt(startM)}~${fmt(endH)}:${fmt(endM)}`,
         song:s.title+mark,
@@ -1030,12 +1045,15 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
 
   schedule.coveredSongs=assigned.size;
 
-  // 원거리(단일) 점수
-  if(farVoters.filter(v=>!multiDayNames.has(v.name)).length&&schedule.days.length){
-    const farDayCount=schedule.days.filter(d=>
-      d.slots.some(sl=>sl.song.includes('🚌'))
+  // ── 원거리 점수 계산 ──
+  // 🚌(하루만) 부원이 참여하는 곡들이 최소 날짜에 몰릴수록 점수 높음
+  // 🚌📅(이틀가능)는 하루 집중 필요 없으므로 점수 계산 제외
+  const farOnlyVoters=farVoters.filter(v=>!multiDayNames.has(v.name));
+  if(farOnlyVoters.length&&schedule.days.length){
+    const farOnlyDayCount=schedule.days.filter(d=>
+      d.slots.some(sl=>sl.song.includes('🚌')&&!sl.song.includes('🚌📅'))
     ).length;
-    schedule.farScore=Math.max(0,schedule.days.length-farDayCount+1)*farVoters.length;
+    schedule.farScore=Math.max(0,schedule.days.length-farOnlyDayCount+1)*farOnlyVoters.length;
   }
 
   return schedule.days.length?schedule:null;
