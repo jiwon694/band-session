@@ -1032,10 +1032,14 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
     const daySongs=songArr.filter(s=>{
       if(assigned.has(s.id)) return false;
       const sp=songParticipants[s.id];
-      if(!sp||!sp.voters.length) return true;
-      return sp.voters.every(v=>{
+      if(!sp||!sp.members.length) return true;
+      // 전원 확인: 투표한 사람은 실제 시간 체크, 미투표자는 가능으로 간주
+      return sp.members.every(name=>{
+        const v=voteArr.find(vt=>vt.name===name);
+        if(!v) return true; // 미투표자 → 가능으로 간주
         if((v.impossibleDays||[]).includes(day)) return false;
         const daySlots=(v.timeSlots||{})[day]||[];
+        if(!daySlots.length) return false;
         return daySlots.some(ts=>{
           if(!ts.start||!ts.end) return false;
           const [sh,sm]=ts.start.split(':').map(Number);
@@ -1090,7 +1094,10 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
         if(cursor+slotDur>dayHardEnd) return;
       }
 
-      const canPlace=!sp.voters.length||sp.voters.every(v=>{
+      // 전원 가능 여부: 투표자는 실제 시간 확인, 미투표자는 가능으로 간주
+      const canPlace=!sp.members.length||sp.members.every(name=>{
+        const v=voteArr.find(vt=>vt.name===name);
+        if(!v) return true; // 미투표자 → 가능으로 간주
         if((v.impossibleDays||[]).includes(day)) return false;
         const daySlots=(v.timeSlots||{})[day]||[];
         return daySlots.some(ts=>{
