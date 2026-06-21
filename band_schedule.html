@@ -458,7 +458,7 @@ function setStep(n){
 }
 
 function updateProgress(n){
-  const labels=['1단계: 참여 곡 선택','2단계: 불가능한 요일 선택','3단계: 가능 시간대 입력'];
+  const labels=['1단계: 참여 곡 확인','2단계: 불가능한 요일 선택','3단계: 가능 시간대 입력'];
   [0,1,2].forEach(i=>{
     const el=document.getElementById('ps'+i);
     el.className='progress-step'+(i<n?' done':i===n?' active':'');
@@ -472,20 +472,57 @@ function renderStep(n){
   else if(n===2) renderStep2();
 }
 
-// 단계 0: 참여 곡 선택
+// 단계 0: 참여 곡 확인 (세션 배정 기반 자동 표시)
 function renderStep0(){
   const songArr=Object.entries(songs).map(([id,s])=>({id,...s}));
   const wrap=document.getElementById('step0View');
+
   if(!songArr.length){
-    wrap.innerHTML=`<div class="card fade"><div class="card-title"><span class="step-badge">1단계</span> 참여 곡 선택</div><div class="card-sub">집부가 곡을 등록하면 여기에 표시됩니다.</div></div>`;
+    wrap.innerHTML=`<div class="card fade">
+      <div class="card-title"><span class="step-badge">1단계</span> 참여 곡 확인</div>
+      <div class="card-sub">집부가 곡을 등록하면 여기에 표시됩니다.</div>
+    </div>`;
     return;
   }
+
+  // 세션 배정 기반으로 본인이 참여하는 곡 자동 추출
+  const mySongs=songArr.filter(s=>validMembers(s.sessions).includes(currentUser));
+
+  // localData.songs를 자동으로 세팅
+  if(localData.songs.length===0 && mySongs.length>0){
+    localData.songs=mySongs.map(s=>s.id);
+  }
+
+  if(!mySongs.length){
+    wrap.innerHTML=`<div class="card fade">
+      <div class="card-title"><span class="step-badge">1단계</span> 참여 곡 확인</div>
+      <div style="background:var(--red-dim);border:0.5px solid rgba(255,92,92,.2);border-radius:var(--radius);padding:14px;margin-bottom:14px;font-size:13px;color:var(--red);line-height:1.7;">
+        ⚠️ 세션 배정 데이터에서 <strong>${currentUser}</strong>님의 참여 곡을 찾을 수 없어요.<br>
+        세션 투표 사이트를 재확인하거나 <strong>집부에게 연락</strong>해주세요.
+      </div>
+      <button class="btn" style="width:100%;" onclick="logout()">← 돌아가기</button>
+    </div>`;
+    return;
+  }
+
   wrap.innerHTML=`<div class="card fade">
-    <div class="card-title"><span class="step-badge">1단계</span> 참여하는 곡을 선택해주세요</div>
-    <div class="card-sub">본인이 합주에 참여하는 곡을 모두 선택하세요.</div>
-    <div class="song-chips">${songArr.map(s=>`<div class="song-chip${localData.songs.includes(s.id)?' selected':''}" onclick="toggleSong('${s.id}')">${s.title}</div>`).join('')}</div>
-    <button class="btn btn-accent" style="width:100%;margin-top:8px;" onclick="nextStep(0)">다음 →</button>
-    <div class="err" id="step0err"></div>
+    <div class="card-title"><span class="step-badge">1단계</span> 참여 곡 확인</div>
+    <div class="card-sub">세션 배정 기준으로 아래 곡에 참여하는 것으로 확인됐어요. 맞는지 확인해주세요.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+      ${mySongs.map(s=>{
+        const sessEntry=Object.entries(s.sessions||{}).find(([,v])=>v&&v.includes(currentUser));
+        const sessName=sessEntry?SESSION_LABELS[sessEntry[0]]||sessEntry[0]:'';
+        return`<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border:0.5px solid rgba(76,255,145,.2);border-radius:var(--radius);padding:10px 14px;">
+          <span style="font-size:14px;font-weight:500;">${s.title}</span>
+          ${sessName?`<span style="font-size:12px;padding:2px 10px;border-radius:99px;background:var(--accent-dim);color:var(--accent);">${sessName}</span>`:''}
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="background:var(--bg3);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 14px;font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.7;">
+      ✅ 맞다면 <strong style="color:var(--text);">아래 버튼</strong>을 눌러주세요.<br>
+      ❌ 참여하지 않는 곡이 있거나 빠진 곡이 있다면 세션 투표 사이트를 재확인하거나 <strong style="color:var(--text);">집부에게 연락</strong>해주세요.
+    </div>
+    <button class="btn btn-accent" style="width:100%;" onclick="nextStep(0)">맞아요, 다음으로 →</button>
   </div>`;
 }
 
@@ -497,7 +534,6 @@ window.toggleSong=function(id){
 
 function nextStep(n){
   if(n===0){
-    if(!localData.songs.length){document.getElementById('step0err').textContent='최소 1곡 이상 선택해주세요.';return;}
     setStep(1);
   } else if(n===1){
     setStep(2);
