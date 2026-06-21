@@ -1014,7 +1014,6 @@ function generateSchedules(songArr,voteArr){
 function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
   const schedule={days:[],coveredSongs:0,farScore:0,label:days.join('·')+'요일'};
   const assigned=new Set();
-  const INTERVAL=15;
 
   // 원거리 부원 이름 목록
   const farNames=new Set(farVoters.map(v=>v.name));
@@ -1033,10 +1032,9 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
       if(assigned.has(s.id)) return false;
       const sp=songParticipants[s.id];
       if(!sp||!sp.members.length) return true;
-      // 전원 확인: 투표한 사람은 실제 시간 체크, 미투표자는 가능으로 간주
       return sp.members.every(name=>{
         const v=voteArr.find(vt=>vt.name===name);
-        if(!v) return true; // 미투표자 → 가능으로 간주
+        if(!v) return true;
         if((v.impossibleDays||[]).includes(day)) return false;
         const daySlots=(v.timeSlots||{})[day]||[];
         if(!daySlots.length) return false;
@@ -1052,13 +1050,18 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
     if(!daySongs.length) return;
 
     const totalSongs=daySongs.length;
-    let slotDur;
-    if(totalSongs<=2) slotDur=90;
-    else if(totalSongs<=4) slotDur=75;
-    else slotDur=60;
 
-    let cursor=dayStartMin;
-    if(isWeekend) cursor=Math.max(dayStartMin,weekendPreferStart);
+    // ── 합주 시간 동적 결정 ──
+    // 가용 시간 / 곡 수로 1곡당 최적 시간 계산
+    // 경우의 수: 60 / 70 / 75 / 80 / 90분
+    const startCursor=isWeekend?Math.max(dayStartMin,weekendPreferStart):dayStartMin;
+    const availableMin=normalEndMin-startCursor;
+    const rawPerSong=availableMin/totalSongs;
+    const DURATIONS=[90,80,75,70,60];
+    // 가용 시간 내에서 최대한 긴 슬롯 선택
+    let slotDur=DURATIONS.find(d=>d*totalSongs<=availableMin)||60;
+
+    let cursor=startCursor;
 
     const slots=[];
 
@@ -1123,7 +1126,7 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
         duration:slotDur
       });
       assigned.add(s.id);
-      cursor+=slotDur+INTERVAL;
+      cursor+=slotDur;
     });
 
     if(slots.length) schedule.days.push({day,slots,slotDur});
@@ -1162,7 +1165,7 @@ function generateFallbackSchedule(songArr,voteArr,songParticipants){
       members:validMembers(s.sessions).join(', '),
       duration:slotDur
     });
-    cursor+=slotDur+15;
+    cursor+=slotDur;
   });
   sc.days.push({day:'토',slots,slotDur});
   sc.coveredSongs=slots.length;
