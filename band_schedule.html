@@ -239,6 +239,11 @@
 
     <!-- 일반 부원: 단계별 투표 -->
     <div id="userFlow" style="display:none;">
+      <!-- 재투표 안내 배너 -->
+      <div id="revisitBanner" style="display:none;background:rgba(232,255,71,.08);border:0.5px solid rgba(232,255,71,.2);border-radius:var(--radius);padding:10px 14px;margin-bottom:16px;align-items:center;gap:8px;font-size:13px;color:var(--accent);">
+        <span>✏️</span>
+        <span>이전에 입력한 내용을 불러왔어요. 수정 후 다시 제출하면 업데이트됩니다.</span>
+      </div>
       <div class="progress-wrap">
         <div class="progress-steps">
           <div class="progress-step" id="ps0"></div>
@@ -375,8 +380,28 @@ function proceedLogin(v){
     switchAdminTab(0);
   } else {
     document.getElementById('userFlow').style.display='block';
-    startSync();
-    setStep(0);
+    // 기존 투표 데이터 불러오기
+    get(ref(db,`sched_votes/${currentUser}`)).then(snap=>{
+      const prev=snap.val();
+      if(prev){
+        // 이전 입력값 복원
+        localData.songs=prev.songs||[];
+        localData.impossibleDays=prev.impossibleDays||[];
+        localData.timeSlots=prev.timeSlots||{};
+        // 원거리/이틀가능 체크 복원
+        if(prev.isFar&&!isFar){
+          isFar=prev.isFar;
+          farRegion=prev.farRegion||'';
+        }
+        if(prev.isMultiDay&&!isMultiDay){
+          isMultiDay=prev.isMultiDay;
+        }
+        // 재투표 안내 배너 표시
+        document.getElementById('revisitBanner').style.display='flex';
+      }
+      startSync();
+      setStep(0);
+    });
   }
 }
 window.login=login;
@@ -395,6 +420,7 @@ function logout(){
   document.getElementById('multiDayCheckRow').className='checkbox-row';
   document.getElementById('multiDayCb').textContent='';
   document.getElementById('userFlow').style.display='none';
+  document.getElementById('revisitBanner').style.display='none';
   document.getElementById('adminFlow').style.display='none';
   document.getElementById('syncDot').classList.remove('live');
 }
@@ -1140,34 +1166,71 @@ function timetableCardHtml(sc,isRecommended,idx){
   const farVoters=Object.values(votes).filter(v=>v.isFar);
   const farNote=farVoters.length?`<div style="font-size:12px;color:#ff6b6b;margin-top:4px;">🚌 원거리 고려: ${farVoters.map(v=>v.name+(v.farRegion?' ('+v.farRegion+')':'')).join(', ')}</div>`:'';
 
-  // 요일별 표 생성
-  const tablesHtml=sc.days.map(d=>{
-    const durLabel=d.slotDur===90?'90분':d.slotDur===75?'75분':'60분';
-    const rows=d.slots.map((s,i)=>`
-      <tr>
-        <td style="background:#1e1e1e;color:#e8ff47;font-family:'DM Mono',monospace;font-size:13px;padding:10px 14px;border:1px solid rgba(255,255,255,.1);white-space:nowrap;font-weight:600;">${s.time}</td>
-        <td style="background:#1a1a1a;padding:10px 14px;border:1px solid rgba(255,255,255,.1);font-size:14px;font-weight:700;color:#f0f0f0;">${s.song}</td>
-        <td style="background:#161616;padding:10px 14px;border:1px solid rgba(255,255,255,.1);font-size:12px;color:#aaa;">${s.members||'세션 미배정'}</td>
-      </tr>`).join('');
-    return`<div style="margin-bottom:20px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <div style="font-size:15px;font-weight:700;color:#f0f0f0;">📅 ${d.day}요일</div>
-        <div style="font-size:12px;color:#888;background:#222;padding:3px 10px;border-radius:99px;border:0.5px solid rgba(255,255,255,.1);">합주 ${durLabel} · ${d.slots.length}곡</div>
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-family:'Noto Sans KR',sans-serif;">
-        <thead>
-          <tr>
-            <th style="background:#252525;color:#e8ff47;font-size:12px;padding:8px 14px;border:1px solid rgba(255,255,255,.15);text-align:left;white-space:nowrap;">시간</th>
-            <th style="background:#252525;color:#e8ff47;font-size:12px;padding:8px 14px;border:1px solid rgba(255,255,255,.15);text-align:left;">곡 제목</th>
-            <th style="background:#252525;color:#e8ff47;font-size:12px;padding:8px 14px;border:1px solid rgba(255,255,255,.15);text-align:left;">참여 세션</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+  // ── 달력형 표 생성 ──
+  // 전체 시간 범위 계산 (15분 단위)
+  const days=sc.days.map(d=>d.day);
+  let minMin=24*60, maxMin=0;
+  sc.days.forEach(d=>{
+    d.slots.forEach(s=>{
+      const [sh,sm]=s.time.split('~')[0].split(':').map(Number);
+      const [eh,em]=s.time.split('~')[1].split(':').map(Number);
+      minMin=Math.min(minMin,sh*60+sm);
+      maxMin=Math.max(maxMin,eh*60+em);
+    });
+  });
+  // 15분 단위 시간 슬롯 생성
+  const timeSlots=[];
+  for(let t=minMin;t<maxMin;t+=15) timeSlots.push(t);
+
+  // 요일별 슬롯 맵 (시작분 → {song, slotDur, rowspan})
+  const daySlotMap={};
+  days.forEach(day=>{
+    daySlotMap[day]={};
+    const d=sc.days.find(d=>d.day===day);
+    if(!d) return;
+    d.slots.forEach(s=>{
+      const [sh,sm]=s.time.split('~')[0].split(':').map(Number);
+      const [eh,em]=s.time.split('~')[1].split(':').map(Number);
+      const startMin=sh*60+sm;
+      const endMin=eh*60+em;
+      const rowspan=(endMin-startMin)/15;
+      daySlotMap[day][startMin]={...s,rowspan,endMin};
+    });
+  });
+
+  // 헤더
+  const headerCells=days.map(d=>`<th style="background:#4a7c4e;color:#fff;padding:10px 8px;border:1px solid #5a9c5e;font-size:13px;font-weight:700;text-align:center;min-width:100px;">${d}요일</th>`).join('');
+
+  // 바디
+  const skipMap={}; // {day: 남은 rowspan}
+  days.forEach(d=>{ skipMap[d]=0; });
+
+  const bodyRows=timeSlots.map(t=>{
+    const fmt=n=>String(n).padStart(2,'0');
+    const h=Math.floor(t/60),m=t%60;
+    const timeLabel=`${fmt(h)}:${fmt(m)}`;
+    const isHalfHour=m===0||m===30;
+
+    const cells=days.map(day=>{
+      if(skipMap[day]>0){ skipMap[day]--; return ''; }
+      const slot=daySlotMap[day][t];
+      if(slot){
+        skipMap[day]=slot.rowspan-1;
+        const bgColor='#e8f5e9';
+        const textColor='#1a1a1a';
+        return`<td rowspan="${slot.rowspan}" style="background:${bgColor};color:${textColor};padding:8px 10px;border:1px solid #c8e6c9;text-align:center;vertical-align:middle;font-size:13px;font-weight:700;line-height:1.4;">
+          ${slot.song}
+        </td>`;
+      }
+      return`<td style="background:#fff;border:1px solid #e0e0e0;height:28px;"></td>`;
+    }).join('');
+
+    return`<tr>
+      <td style="background:${isHalfHour?'#4a7c4e':'#6aaa6e'};color:#fff;padding:4px 10px;border:1px solid #5a9c5e;font-size:12px;font-family:'DM Mono',monospace;white-space:nowrap;text-align:right;font-weight:${isHalfHour?'700':'400'};">${timeLabel}</td>
+      ${cells}
+    </tr>`;
   }).join('');
 
-  // 이미지 저장용 캡처 영역 (카드 헤더 제외, 표만)
   const captureId=`capture_${idx}`;
 
   return`<div class="timetable-card${isRecommended?' recommended':''}" id="timetable_${idx}">
@@ -1182,11 +1245,19 @@ function timetableCardHtml(sc,isRecommended,idx){
         <button class="save-img-btn" onclick="saveAsImage('${captureId}','시간표_${sc.label}')">🖼 이미지 저장</button>
       </div>
     </div>
-    <div id="${captureId}" style="background:#0f0f0f;border-radius:10px;padding:20px;">
-      <div style="font-size:14px;font-weight:700;color:#e8ff47;margin-bottom:4px;font-family:'Noto Sans KR',sans-serif;">🎸 밴드부 합주 시간표</div>
-      <div style="font-size:12px;color:#666;margin-bottom:16px;font-family:'DM Mono',monospace;">${sc.label} · ${sc.coveredSongs}곡${isRecommended?' ⭐ 추천':''}</div>
-      ${tablesHtml}
-      <div style="font-size:11px;color:#444;margin-top:8px;font-family:'DM Mono',monospace;">🚌 원거리하루만 · 🚌📅 원거리이틀가능 · 📅 이틀가능</div>
+    <div id="${captureId}" style="background:#fff;border-radius:10px;padding:20px;overflow-x:auto;">
+      <div style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:4px;font-family:'Noto Sans KR',sans-serif;">🎸 밴드부 합주 시간표</div>
+      <div style="font-size:12px;color:#666;margin-bottom:14px;font-family:'Noto Sans KR',sans-serif;">${sc.label} · ${sc.coveredSongs}곡${isRecommended?' ⭐ 추천':''}</div>
+      <table style="border-collapse:collapse;font-family:'Noto Sans KR',sans-serif;width:100%;">
+        <thead>
+          <tr>
+            <th style="background:#4a7c4e;color:#fff;padding:10px 12px;border:1px solid #5a9c5e;font-size:13px;text-align:center;white-space:nowrap;">시간</th>
+            ${headerCells}
+          </tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+      <div style="font-size:11px;color:#999;margin-top:10px;font-family:'Noto Sans KR',sans-serif;">🚌 원거리 하루만 · 🚌📅 원거리+이틀가능 · 📅 이틀가능</div>
     </div>
   </div>`;
 }
@@ -1195,7 +1266,7 @@ window.saveAsImage=async function(elId,filename){
   if(!window.html2canvas){alert('잠시 후 다시 시도해주세요.');return;}
   const el=document.getElementById(elId);
   const canvas=await html2canvas(el,{
-    backgroundColor:'#0f0f0f',
+    backgroundColor:'#ffffff',
     scale:2,
     useCORS:true,
     logging:false
