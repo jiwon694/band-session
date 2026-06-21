@@ -425,10 +425,17 @@ function startSync(){
           sessions:{},
           createdAt:existing.createdAt||Date.now()
         };
-        // 세션 담당자 입력 (항상 최신 session_export 기준으로 덮어쓰기)
         Object.entries(s.sessions||{}).forEach(([sessId,sessData])=>{
-          if(sessData.active&&sessData.members?.length){
-            updates[sid].sessions[sessId]=sessData.members.join(', ');
+          if(!sessData||!sessData.active) return;
+          // Firebase는 배열을 객체로 변환하므로 둘 다 처리
+          let members=[];
+          if(Array.isArray(sessData.members)){
+            members=sessData.members.filter(m=>m);
+          } else if(sessData.members&&typeof sessData.members==='object'){
+            members=Object.values(sessData.members).filter(m=>m);
+          }
+          if(members.length){
+            updates[sid].sessions[sessId]=members.join(', ');
           }
         });
       });
