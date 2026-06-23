@@ -1073,139 +1073,113 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
   const assigned=new Set();
   const farNames=new Set(farVoters.map(v=>v.name));
   const multiDayNames=new Set(voteArr.filter(v=>v.isMultiDay).map(v=>v.name));
+  const DURATIONS=[90,80,75,70,60];
 
-  // 곡의 참여자 중 투표한 사람 기준으로 해당 요일 최대 가능 종료 시간 계산
-  function getSongEndLimit(s, day){
-    const sp=songParticipants[s.id];
-    if(!sp||!sp.members.length) return 22*60;
-    let minEnd=22*60;
-    sp.members.forEach(name=>{
-      const v=voteArr.find(vt=>vt.name===name);
-      if(!v) return; // 미투표자 → 제약 없음
-      if((v.impossibleDays||[]).includes(day)) return;
-      const daySlots=(v.timeSlots||{})[day]||[];
-      if(!daySlots.length) return; // 시간대 미입력 → 제약 없음
-      daySlots.forEach(ts=>{
-        if(!ts.end) return;
-        const [eh,em]=ts.end.split(':').map(Number);
-        minEnd=Math.min(minEnd,eh*60+em);
-      });
+  function getMemberWindow(name,day){
+    const v=voteArr.find(vt=>vt.name===name);
+    if(!v) return {start:0,end:22*60};
+    if((v.impossibleDays||[]).includes(day)) return null;
+    const daySlots=(v.timeSlots||{})[day]||[];
+    if(!daySlots.length) return {start:0,end:22*60};
+    let minStart=22*60,maxEnd=0;
+    daySlots.forEach(ts=>{
+      if(!ts.start||!ts.end) return;
+      const [sh,sm]=ts.start.split(':').map(Number);
+      const [eh,em]=ts.end.split(':').map(Number);
+      minStart=Math.min(minStart,sh*60+sm);
+      maxEnd=Math.max(maxEnd,eh*60+em);
     });
-    return minEnd;
+    return {start:minStart,end:maxEnd};
   }
 
-  // 곡을 특정 요일에 배치 가능한지 (요일 자체가 가능한지)
-  function canPlaceOnDay(s, day){
+  function getSongWindow(s,day){
     const sp=songParticipants[s.id];
-    if(!sp||!sp.members.length) return true;
-    return sp.members.every(name=>{
-      const v=voteArr.find(vt=>vt.name===name);
-      if(!v) return true;
-      if((v.impossibleDays||[]).includes(day)) return false;
-      return true;
-    });
-  }
-
-  // 특정 cursor+slotDur에 배치 가능한지 (시간대 확인)
-  function canPlaceAtTime(s, day, cursor, slotDur){
-    const sp=songParticipants[s.id];
-    if(!sp||!sp.members.length) return true;
-    return sp.members.every(name=>{
-      const v=voteArr.find(vt=>vt.name===name);
-      if(!v) return true;
-      if((v.impossibleDays||[]).includes(day)) return false;
-      const daySlots=(v.timeSlots||{})[day]||[];
-      if(!daySlots.length) return true;
-      // 해당 시간대가 이 사람의 가능 시간 안에 들어오는지
-      return daySlots.some(ts=>{
-        if(!ts.start||!ts.end) return false;
-        const [sh,sm]=ts.start.split(':').map(Number);
-        const [eh,em]=ts.end.split(':').map(Number);
-        return sh*60+sm<=cursor && eh*60+em>=cursor+slotDur;
-      });
-    });
+    if(!sp||!sp.members.length) return {start:15*60,end:22*60};
+    let winStart=0,winEnd=22*60;
+    for(const name of sp.members){
+      const w=getMemberWindow(name,day);
+      if(!w) return null;
+      winStart=Math.max(winStart,w.start);
+      winEnd=Math.min(winEnd,w.end);
+    }
+    if(winStart>=winEnd) return null;
+    return {start:winStart,end:winEnd};
   }
 
   days.forEach(day=>{
     const isWeekend=WEEKEND.includes(day);
-    const dayStartMin=isWeekend?9*60:15*60;
     const dayEndMin=22*60;
-    const startCursor=isWeekend?Math.max(dayStartMin,12*60):dayStartMin;
+    const startCursor=isWeekend?12*60:15*60;
 
-    // 이 요일에 배치 가능한 곡 목록
-    const daySongs=songArr.filter(s=>
-      !assigned.has(s.id) && canPlaceOnDay(s, day)
-    );
-    if(!daySongs.length) return;
-
-    // 우선순위 분류
-    const tier1=daySongs.filter(s=>songParticipants[s.id].voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name)));
-    const tier2=daySongs.filter(s=>!tier1.includes(s)&&songParticipants[s.id].voters.some(v=>farNames.has(v.name)&&multiDayNames.has(v.name)));
-    const tier4=daySongs.filter(s=>!tier1.includes(s)&&!tier2.includes(s)&&songParticipants[s.id].voters.some(v=>!farNames.has(v.name)&&multiDayNames.has(v.name)));
-    const tier3=daySongs.filter(s=>!tier1.includes(s)&&!tier2.includes(s)&&!tier4.includes(s));
-    const orderedSongs=[...tier1,...tier2,...tier3,...tier4];
-
-    // 각 곡의 종료 제한 시간 계산
-    const songEndLimits=new Map();
-    orderedSongs.forEach(s=>{
-      songEndLimits.set(s.id, getSongEndLimit(s, day));
+    const songWindows=new Map();
+    songArr.forEach(s=>{
+      if(assigned.has(s.id)) return;
+      const w=getSongWindow(s,day);
+      if(w) songWindows.set(s.id,w);
     });
 
-    // 전체 가용 시간으로 slotDur 결정
-    // 단, 원거리 참여자 있는 곡은 19:00 제한 고려
-    const availableMin=dayEndMin-startCursor;
-    const DURATIONS=[90,80,75,70,60];
-    let slotDur=DURATIONS.find(d=>d*orderedSongs.length<=availableMin)||60;
+    if(!songWindows.size) return;
+
+    const placeable=songArr.filter(s=>songWindows.has(s.id));
+
+    placeable.sort((a,b)=>{
+      const sp_a=songParticipants[a.id],sp_b=songParticipants[b.id];
+      const rank=sp=>{
+        if(sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name))) return 0;
+        if(sp.voters.some(v=>farNames.has(v.name)&&multiDayNames.has(v.name))) return 1;
+        if(sp.voters.some(v=>!farNames.has(v.name)&&multiDayNames.has(v.name))) return 3;
+        return 2;
+      };
+      const ra=rank(sp_a),rb=rank(sp_b);
+      if(ra!==rb) return ra-rb;
+      return songWindows.get(a.id).end-songWindows.get(b.id).end;
+    });
 
     let cursor=startCursor;
     const slots=[];
 
-    orderedSongs.forEach(s=>{
-      const endLimit=songEndLimits.get(s.id);
-
-      // 이 slotDur로 배치했을 때 참여자 종료 시간 초과하는지 확인
-      // 초과하면 더 짧은 슬롯으로 조정
-      let actualSlotDur=slotDur;
-      if(cursor+actualSlotDur>endLimit){
-        // 더 짧은 슬롯으로 재조정
-        const remaining=endLimit-cursor;
-        const shorter=DURATIONS.find(d=>d<=remaining&&d>=60);
-        if(!shorter) return; // 60분도 안 남으면 스킵
-        actualSlotDur=shorter;
-      }
-
-      if(cursor+actualSlotDur>dayEndMin) return;
-      if(!canPlaceAtTime(s, day, cursor, actualSlotDur)) return;
-
+    placeable.forEach(s=>{
+      const w=songWindows.get(s.id);
+      if(!w) return;
+      const actualCursor=Math.max(cursor,w.start);
+      if(actualCursor>=w.end) return;
+      const available=w.end-actualCursor;
+      if(available<60) return;
+      const slotDur=DURATIONS.find(d=>d<=available)||60;
+      if(actualCursor+slotDur>dayEndMin) return;
       const fmt=n=>String(n).padStart(2,'0');
-      const startH=Math.floor(cursor/60),startM=cursor%60;
-      const endMin=cursor+actualSlotDur;
-      const endH=Math.floor(endMin/60),endM=endMin%60;
+      const end=actualCursor+slotDur;
       slots.push({
-        time:`${fmt(startH)}:${fmt(startM)}~${fmt(endH)}:${fmt(endM)}`,
+        time:`${fmt(Math.floor(actualCursor/60))}:${fmt(actualCursor%60)}~${fmt(Math.floor(end/60))}:${fmt(end%60)}`,
         song:s.title,
         members:validMembers(s.sessions).join(', '),
-        duration:actualSlotDur
+        duration:slotDur
       });
       assigned.add(s.id);
-      cursor+=actualSlotDur;
+      cursor=end;
     });
 
-    if(slots.length) schedule.days.push({day,slots,slotDur});
+    if(slots.length) schedule.days.push({day,slots,slotDur:slots[0]?.duration||60});
   });
 
   schedule.coveredSongs=assigned.size;
 
   const farOnlyVoters=farVoters.filter(v=>!multiDayNames.has(v.name));
   if(farOnlyVoters.length&&schedule.days.length){
-    const farOnlyDayCount=schedule.days.filter(d=>
-      d.slots.some(sl=>sl.song.includes('🚌')&&!sl.song.includes('🚌📅'))
-    ).length;
-    schedule.farScore=Math.max(0,schedule.days.length-farOnlyDayCount+1)*farOnlyVoters.length;
+    const farDays=new Set();
+    schedule.days.forEach(d=>{
+      const sp=d.slots.some(sl=>{
+        const song=songArr.find(s=>s.title===sl.song);
+        return song&&songParticipants[song.id]?.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name));
+      });
+      if(sp) farDays.add(d.day);
+    });
+    schedule.farScore=Math.max(0,schedule.days.length-farDays.size+1)*farOnlyVoters.length;
   }
 
   return schedule.days.length?schedule:null;
 }
+
 
 function generateFallbackSchedule(songArr,voteArr,songParticipants){
   const sc={days:[],coveredSongs:0,farScore:0,label:'기본 시간표 (데이터 부족)'};
