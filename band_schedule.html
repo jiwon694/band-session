@@ -900,13 +900,17 @@ function renderAdminStatus(){
   }).join('');
 
   // 투표자 상세 (이름 클릭 시 모달)
-  const voterDetailHtml=voteArr.map(v=>`<div class="member-row">
-    <span class="member-name done member-name-btn" onclick="showMemberDetail('${v.name}')">${v.name}${v.isFar?`<span class="far-tag">원거리${v.farRegion?' ('+v.farRegion+')':''}</span>`:''}✓</span>
-    <div style="flex:1;font-size:12px;color:var(--text2);">
-      불가: ${v.impossibleDays&&v.impossibleDays.length?v.impossibleDays.join(', '):'없음'} |
-      곡: ${(v.songs||[]).map(id=>songs[id]?.title||id).join(', ')||'없음'}
-    </div>
-  </div>`).join('');
+  const voterDetailHtml=voteArr.map(v=>{
+    const farBadge=v.isFar?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--red-dim);color:var(--red);border:0.5px solid rgba(255,92,92,.2);margin-left:4px;">🚌 원거리${v.farRegion?' ('+v.farRegion+')':''}</span>`:'';
+    const multiBadge=v.isMultiDay?`<span style="font-size:10px;padding:1px 6px;border-radius:99px;background:var(--green-dim);color:var(--green);border:0.5px solid rgba(76,255,145,.2);margin-left:4px;">📅 이틀가능</span>`:'';
+    return`<div class="member-row">
+      <span class="member-name done member-name-btn" onclick="showMemberDetail('${v.name}')" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;">${v.name}${farBadge}${multiBadge} ✓</span>
+      <div style="flex:1;font-size:12px;color:var(--text2);">
+        불가: ${v.impossibleDays&&v.impossibleDays.length?v.impossibleDays.join(', '):'없음'} |
+        곡: ${(v.songs||[]).map(id=>songs[id]?.title||id).join(', ')||'없음'}
+      </div>
+    </div>`;
+  }).join('');
 
   // 미투표자 (없음 제외)
   const allMembers=new Set();
@@ -942,14 +946,27 @@ function renderAdminSchedule(){
   }
 
   // 각 곡의 참여 인원 + 불가 요일/가능 시간 계산
-  const schedules=generateSchedules(songArr,voteArr);
+  const {schedules, unassignedSongs}=generateSchedules(songArr,voteArr);
 
   if(!schedules.length){
     wrap.innerHTML='<div class="card"><div style="color:var(--text2);font-size:13px;text-align:center;padding:20px;">가능한 시간표를 생성할 수 없어요. 투표 데이터를 확인해주세요.</div></div>';
     return;
   }
 
-  wrap.innerHTML=`<div style="margin-bottom:12px;" class="notice"><span class="notice-dot"></span>🚌 원거리 하루만(1순위) &nbsp;|&nbsp; 🚌📅 원거리+이틀가능(2순위) &nbsp;|&nbsp; 일반(3순위) &nbsp;|&nbsp; 📅 이틀가능만(4순위)</div>`+
+  // 미배치 곡 경고 배너
+  const unassignedHtml=unassignedSongs.length
+    ?`<div style="background:var(--red-dim);border:0.5px solid rgba(255,92,92,.2);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:600;color:var(--red);margin-bottom:6px;">⚠️ 합주 가능한 시간대가 없는 곡</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${unassignedSongs.map(s=>`<span style="font-size:12px;padding:3px 10px;border-radius:99px;background:rgba(255,92,92,.15);color:var(--red);border:0.5px solid rgba(255,92,92,.2);">
+            ${s.title}
+          </span>`).join('')}
+        </div>
+        <div style="font-size:12px;color:var(--text2);margin-top:8px;">참여자들의 가능 시간대가 맞지 않아 시간표에 포함되지 못했어요. 투표 현황에서 각 참여자의 가능 시간을 확인해주세요.</div>
+      </div>`
+    :'';
+
+  wrap.innerHTML=unassignedHtml+`<div style="margin-bottom:12px;" class="notice"><span class="notice-dot"></span>추천 시간표가 상단에 표시됩니다. 이미지 저장으로 저장할 수 있어요.</div>`+
     schedules.map((sc,i)=>timetableCardHtml(sc,i===0,i)).join('');
 
   // html2canvas 로드
@@ -961,7 +978,6 @@ function renderAdminSchedule(){
 }
 
 function generateSchedules(songArr,voteArr){
-  const results=[];
   const farVoters=voteArr.filter(v=>v.isFar);
 
   // ── 곡별 참여자 정보 (없음 제외) ──
@@ -973,42 +989,83 @@ function generateSchedules(songArr,voteArr){
     songParticipants[s.id]={title:s.title,members:sessMembers,voters,hasFar,song:s};
   });
 
-  // ── 후보 요일: 전체 투표자 중 절반 이상 가능한 요일 ──
+  // ── 후보 요일: 최소 한 곡이라도 배치 가능한 요일 ──
   const candidateDays=DAYS.filter(d=>{
-    const possible=voteArr.filter(v=>!(v.impossibleDays||[]).includes(d));
-    return possible.length>=Math.ceil(voteArr.length/2);
+    return songArr.some(s=>{
+      const sp=songParticipants[s.id];
+      if(!sp||!sp.members.length) return true;
+      return sp.members.every(name=>{
+        const v=voteArr.find(vt=>vt.name===name);
+        if(!v) return true;
+        return !(v.impossibleDays||[]).includes(d);
+      });
+    });
   });
 
-  if(!candidateDays.length){
-    results.push(generateFallbackSchedule(songArr,voteArr,songParticipants));
-    return results;
-  }
+  const useDays=candidateDays.length?candidateDays:DAYS;
 
-  // ── 요일 조합 (2~3일) ──
-  const dayCombos=[];
-  for(let i=0;i<candidateDays.length;i++){
-    for(let j=i+1;j<candidateDays.length;j++){
-      dayCombos.push([candidateDays[i],candidateDays[j]]);
-      for(let k=j+1;k<candidateDays.length;k++){
-        dayCombos.push([candidateDays[i],candidateDays[j],candidateDays[k]]);
+  // ── 요일 조합 생성 (2일~최대 7일, 모든 곡 커버될 때까지 늘림) ──
+  function getCombos(days, size){
+    const result=[];
+    function pick(start, combo){
+      if(combo.length===size){result.push([...combo]);return;}
+      for(let i=start;i<days.length;i++){
+        combo.push(days[i]);
+        pick(i+1,combo);
+        combo.pop();
       }
     }
+    pick(0,[]);
+    return result;
   }
 
-  dayCombos.slice(0,8).forEach(combo=>{
-    const sc=buildSchedule(combo,songArr,voteArr,songParticipants,farVoters);
-    if(sc) results.push(sc);
-  });
+  let bestSchedules=[];
+  let bestCoverage=0;
+
+  // 2일부터 최대 7일까지 시도, 모든 곡 커버되면 중단
+  for(let size=2;size<=Math.min(7,useDays.length);size++){
+    const combos=getCombos(useDays,size);
+    const thisRound=[];
+
+    combos.forEach(combo=>{
+      const sc=buildSchedule(combo,songArr,voteArr,songParticipants,farVoters);
+      if(sc) thisRound.push(sc);
+    });
+
+    if(!thisRound.length) continue;
+
+    // 이 라운드에서 최대 커버 곡 수
+    const maxCov=Math.max(...thisRound.map(s=>s.coveredSongs));
+    if(maxCov>bestCoverage){
+      bestCoverage=maxCov;
+      bestSchedules=thisRound;
+    }
+
+    // 모든 곡 커버하는 시간표가 있으면 중단
+    if(maxCov>=songArr.length) break;
+  }
+
+  // 1일짜리도 시도 (백업)
+  if(!bestSchedules.length){
+    useDays.forEach(day=>{
+      const sc=buildSchedule([day],songArr,voteArr,songParticipants,farVoters);
+      if(sc) bestSchedules.push(sc);
+    });
+  }
 
   // ── 점수 기준 정렬 ──
-  // 커버 곡 수 많을수록, 날짜 적을수록, 원거리 집중도 높을수록 좋음
-  results.sort((a,b)=>{
+  bestSchedules.sort((a,b)=>{
     const sA=a.coveredSongs*10 - a.days.length*3 + a.farScore*2;
     const sB=b.coveredSongs*10 - b.days.length*3 + b.farScore*2;
     return sB-sA;
   });
 
-  return results.slice(0,4);
+  // ── 미배치 곡 계산 (최고 시간표 기준) ──
+  const bestSc=bestSchedules[0];
+  const assignedTitles=new Set(bestSc?.days.flatMap(d=>d.slots.map(sl=>sl.song))||[]);
+  const unassignedSongs=songArr.filter(s=>!assignedTitles.has(s.title));
+
+  return {schedules:bestSchedules.slice(0,4), unassignedSongs};
 }
 
 function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
@@ -1117,11 +1174,9 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
       const startH=Math.floor(cursor/60),startM=cursor%60;
       const endMin=cursor+slotDur;
       const endH=Math.floor(endMin/60),endM=endMin%60;
-      // 마크: 🚌원거리하루만 / 🚌📅원거리이틀가능 / 📅이틀가능만
-      const mark=hasFarOnly?' 🚌':hasFarMulti?' 🚌📅':hasMultiOnly?' 📅':'';
       slots.push({
         time:`${fmt(startH)}:${fmt(startM)}~${fmt(endH)}:${fmt(endM)}`,
-        song:s.title+mark,
+        song:s.title,
         members:validMembers(s.sessions).join(', '),
         duration:slotDur
       });
@@ -1177,8 +1232,11 @@ function timetableCardHtml(sc,isRecommended,idx){
   const farNote=farVoters.length?`<div style="font-size:12px;color:#ff6b6b;margin-top:4px;">🚌 원거리 고려: ${farVoters.map(v=>v.name+(v.farRegion?' ('+v.farRegion+')':'')).join(', ')}</div>`:'';
 
   // ── 달력형 표 생성 ──
-  // 전체 시간 범위 계산 (15분 단위)
-  const days=sc.days.map(d=>d.day);
+  // 모든 요일 포함 (합주 없는 요일은 공란)
+  const allDays=DAYS; // 월~일 전체
+  const activeDays=sc.days.map(d=>d.day);
+
+  // 전체 시간 범위 계산 (합주 있는 요일 기준, 15분 단위)
   let minMin=24*60, maxMin=0;
   sc.days.forEach(d=>{
     d.slots.forEach(s=>{
@@ -1188,13 +1246,15 @@ function timetableCardHtml(sc,isRecommended,idx){
       maxMin=Math.max(maxMin,eh*60+em);
     });
   });
-  // 15분 단위 시간 슬롯 생성
+  if(minMin===24*60) minMin=15*60; // 기본값
+  if(maxMin===0) maxMin=21*60;
+
   const timeSlots=[];
   for(let t=minMin;t<maxMin;t+=15) timeSlots.push(t);
 
-  // 요일별 슬롯 맵 (시작분 → {song, slotDur, rowspan})
+  // 요일별 슬롯 맵
   const daySlotMap={};
-  days.forEach(day=>{
+  allDays.forEach(day=>{
     daySlotMap[day]={};
     const d=sc.days.find(d=>d.day===day);
     if(!d) return;
@@ -1208,12 +1268,15 @@ function timetableCardHtml(sc,isRecommended,idx){
     });
   });
 
-  // 헤더
-  const headerCells=days.map(d=>`<th style="background:#4a7c4e;color:#fff;padding:10px 8px;border:1px solid #5a9c5e;font-size:13px;font-weight:700;text-align:center;min-width:100px;">${d}요일</th>`).join('');
+  // 헤더 (합주 있는 요일은 초록, 없는 요일은 회색)
+  const headerCells=allDays.map(d=>{
+    const hasSchedule=activeDays.includes(d);
+    return`<th style="background:${hasSchedule?'#4a7c4e':'#444'};color:#fff;padding:10px 8px;border:1px solid ${hasSchedule?'#5a9c5e':'#555'};font-size:13px;font-weight:700;text-align:center;min-width:90px;">${d}요일</th>`;
+  }).join('');
 
   // 바디
-  const skipMap={}; // {day: 남은 rowspan}
-  days.forEach(d=>{ skipMap[d]=0; });
+  const skipMap={};
+  allDays.forEach(d=>{ skipMap[d]=0; });
 
   const bodyRows=timeSlots.map(t=>{
     const fmt=n=>String(n).padStart(2,'0');
@@ -1221,16 +1284,17 @@ function timetableCardHtml(sc,isRecommended,idx){
     const timeLabel=`${fmt(h)}:${fmt(m)}`;
     const isHalfHour=m===0||m===30;
 
-    const cells=days.map(day=>{
+    const cells=allDays.map(day=>{
+      const hasSchedule=activeDays.includes(day);
+      if(!hasSchedule){
+        // 합주 없는 요일: 전체 공란 (rowspan으로 합치지 않고 개별 셀)
+        return`<td style="background:#f5f5f5;border:1px solid #e0e0e0;height:28px;"></td>`;
+      }
       if(skipMap[day]>0){ skipMap[day]--; return ''; }
       const slot=daySlotMap[day][t];
       if(slot){
         skipMap[day]=slot.rowspan-1;
-        const bgColor='#e8f5e9';
-        const textColor='#1a1a1a';
-        return`<td rowspan="${slot.rowspan}" style="background:${bgColor};color:${textColor};padding:8px 10px;border:1px solid #c8e6c9;text-align:center;vertical-align:middle;font-size:13px;font-weight:700;line-height:1.4;">
-          ${slot.song}
-        </td>`;
+        return`<td rowspan="${slot.rowspan}" style="background:#e8f5e9;color:#1a1a1a;padding:8px 10px;border:1px solid #c8e6c9;text-align:center;vertical-align:middle;font-size:13px;font-weight:700;line-height:1.4;">${slot.song}</td>`;
       }
       return`<td style="background:#fff;border:1px solid #e0e0e0;height:28px;"></td>`;
     }).join('');
@@ -1240,7 +1304,6 @@ function timetableCardHtml(sc,isRecommended,idx){
       ${cells}
     </tr>`;
   }).join('');
-
   const captureId=`capture_${idx}`;
 
   return`<div class="timetable-card${isRecommended?' recommended':''}" id="timetable_${idx}">
@@ -1267,7 +1330,7 @@ function timetableCardHtml(sc,isRecommended,idx){
         </thead>
         <tbody>${bodyRows}</tbody>
       </table>
-      <div style="font-size:11px;color:#999;margin-top:10px;font-family:'Noto Sans KR',sans-serif;">🚌 원거리 하루만 · 🚌📅 원거리+이틀가능 · 📅 이틀가능</div>
+      <div style="font-size:11px;color:#999;margin-top:10px;font-family:'Noto Sans KR',sans-serif;">※ 투표 데이터 기반 자동 생성 시간표입니다.</div>
     </div>
   </div>`;
 }
