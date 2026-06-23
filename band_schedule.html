@@ -1069,117 +1069,247 @@ function generateSchedules(songArr,voteArr){
 }
 
 function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
-  const schedule={days:[],coveredSongs:0,farScore:0,label:days.join('·')+'요일'};
+  const schedule={days:[],coveredSongs:0,farScore:0,label:days.join('·')+'요일',farWarning:null};
   const assigned=new Set();
-  const farNames=new Set(farVoters.map(v=>v.name));
   const multiDayNames=new Set(voteArr.filter(v=>v.isMultiDay).map(v=>v.name));
-  const DURATIONS=[90,80,75,70,60];
+  // 원거리이고 이틀가능 아닌 사람 (박상현 케이스)
+  const farOnlyNames=new Set(farVoters.filter(v=>!multiDayNames.has(v.name)).map(v=>v.name));
+  const DURATIONS=[90,80,75,70,60,50,40];
+  const FAR_END_CAP=20*60; // 원거리 둘째날 20:00 캡
 
-  function getMemberWindow(name,day){
+  function getMemberWindow(name,day,endCap){
     const v=voteArr.find(vt=>vt.name===name);
     if(!v) return {start:0,end:22*60};
     if((v.impossibleDays||[]).includes(day)) return null;
-    const daySlots=(v.timeSlots||{})[day]||[];
-    if(!daySlots.length) return {start:0,end:22*60};
-    let minStart=22*60,maxEnd=0;
-    daySlots.forEach(ts=>{
+    const ds=(v.timeSlots||{})[day]||[];
+    if(!ds.length) return {start:0,end:22*60};
+    let ms=22*60,me=0;
+    ds.forEach(ts=>{
       if(!ts.start||!ts.end) return;
       const [sh,sm]=ts.start.split(':').map(Number);
       const [eh,em]=ts.end.split(':').map(Number);
-      minStart=Math.min(minStart,sh*60+sm);
-      maxEnd=Math.max(maxEnd,eh*60+em);
+      ms=Math.min(ms,sh*60+sm); me=Math.max(me,eh*60+em);
     });
-    return {start:minStart,end:maxEnd};
+    if(endCap!=null) me=Math.min(me,endCap);
+    return {start:ms,end:me};
   }
 
+  // 원거리 곡 윈도우: 원거리 참여자에게만 endCap 적용
+  function getFarSongWindow(s,day,endCap){
+    const sp=songParticipants[s.id];
+    if(!sp||!sp.members.length) return {start:15*60,end:22*60};
+    let ws=0,we=22*60;
+    for(const name of sp.members){
+      const isFarMember=farOnlyNames.has(name);
+      const w=getMemberWindow(name,day,isFarMember&&endCap!=null?endCap:null);
+      if(!w) return null;
+      ws=Math.max(ws,w.start); we=Math.min(we,w.end);
+    }
+    return ws<we?{start:ws,end:we}:null;
+  }
+
+  // 일반 곡 윈도우
   function getSongWindow(s,day){
     const sp=songParticipants[s.id];
     if(!sp||!sp.members.length) return {start:15*60,end:22*60};
-    let winStart=0,winEnd=22*60;
+    let ws=0,we=22*60;
     for(const name of sp.members){
-      const w=getMemberWindow(name,day);
+      const w=getMemberWindow(name,day,null);
       if(!w) return null;
-      winStart=Math.max(winStart,w.start);
-      winEnd=Math.min(winEnd,w.end);
+      ws=Math.max(ws,w.start); we=Math.min(we,w.end);
     }
-    if(winStart>=winEnd) return null;
-    return {start:winStart,end:winEnd};
+    return ws<we?{start:ws,end:we}:null;
   }
 
-  days.forEach(day=>{
-    const isWeekend=WEEKEND.includes(day);
-    const dayEndMin=22*60;
-    const startCursor=isWeekend?12*60:15*60;
+  function isFarSong(s){
+    const sp=songParticipants[s.id];
+    return sp&&sp.members.some(name=>farOnlyNames.has(name));
+  }
 
-    const songWindows=new Map();
-    songArr.forEach(s=>{
+  // 원거리 곡: 60분 고정, endCap 적용
+  function placeFarSongs(day,targetSongs,endCap){
+    const wins=new Map();
+    targetSongs.forEach(s=>{
+      if(assigned.has(s.id)) return;
+      const w=getFarSongWindow(s,day,endCap);
+      if(w&&w.end-w.start>=40) wins.set(s.id,w);
+    });
+    const placeable=targetSongs.filter(s=>wins.has(s.id));
+    placeable.sort((a,b)=>wins.get(a.id).end-wins.get(b.id).end);
+    let cursor=WEEKEND.includes(day)?12*60:15*60;
+    const slots=[];
+    placeable.forEach(s=>{
+      const w=wins.get(s.id);
+      const ac=Math.max(cursor,w.start);
+      if(ac+40>w.end) return;
+      // 60분 고정 (최소 40분)
+      const slotDur=Math.min(60,w.end-ac);
+      if(slotDur<40) return;
+      const fmt=n=>String(n).padStart(2,'0');
+      const end=ac+slotDur;
+      slots.push({time:`${fmt(Math.floor(ac/60))}:${fmt(ac%60)}~${fmt(Math.floor(end/60))}:${fmt(end%60)}`,song:s.title,members:validMembers(s.sessions).join(', '),duration:slotDur});
+      assigned.add(s.id); cursor=end;
+    });
+    return slots;
+  }
+
+  // 일반 곡: 최장 슬롯
+  function placeNonFarSongs(day,targetSongs,startCursor){
+    const wins=new Map();
+    targetSongs.forEach(s=>{
       if(assigned.has(s.id)) return;
       const w=getSongWindow(s,day);
-      if(w) songWindows.set(s.id,w);
+      if(w&&w.end-w.start>=40) wins.set(s.id,w);
     });
-
-    if(!songWindows.size) return;
-
-    const placeable=songArr.filter(s=>songWindows.has(s.id));
-
-    placeable.sort((a,b)=>{
-      const sp_a=songParticipants[a.id],sp_b=songParticipants[b.id];
-      const rank=sp=>{
-        if(sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name))) return 0;
-        if(sp.voters.some(v=>farNames.has(v.name)&&multiDayNames.has(v.name))) return 1;
-        if(sp.voters.some(v=>!farNames.has(v.name)&&multiDayNames.has(v.name))) return 3;
-        return 2;
-      };
-      const ra=rank(sp_a),rb=rank(sp_b);
-      if(ra!==rb) return ra-rb;
-      return songWindows.get(a.id).end-songWindows.get(b.id).end;
-    });
-
-    let cursor=startCursor;
+    const placeable=targetSongs.filter(s=>wins.has(s.id));
+    placeable.sort((a,b)=>wins.get(a.id).end-wins.get(b.id).end);
+    let cursor=startCursor!=null?startCursor:(WEEKEND.includes(day)?12*60:15*60);
     const slots=[];
-
     placeable.forEach(s=>{
-      const w=songWindows.get(s.id);
-      if(!w) return;
-      const actualCursor=Math.max(cursor,w.start);
-      if(actualCursor>=w.end) return;
-      const available=w.end-actualCursor;
-      if(available<60) return;
-      const slotDur=DURATIONS.find(d=>d<=available)||60;
-      if(actualCursor+slotDur>dayEndMin) return;
+      const w=wins.get(s.id);
+      const ac=Math.max(cursor,w.start);
+      if(ac>=w.end) return;
+      const available=w.end-ac;
+      if(available<40) return;
+      const slotDur=DURATIONS.find(d=>d<=available)||40;
+      if(ac+slotDur>22*60) return;
       const fmt=n=>String(n).padStart(2,'0');
-      const end=actualCursor+slotDur;
-      slots.push({
-        time:`${fmt(Math.floor(actualCursor/60))}:${fmt(actualCursor%60)}~${fmt(Math.floor(end/60))}:${fmt(end%60)}`,
-        song:s.title,
-        members:validMembers(s.sessions).join(', '),
-        duration:slotDur
-      });
-      assigned.add(s.id);
-      cursor=end;
+      const end=ac+slotDur;
+      slots.push({time:`${fmt(Math.floor(ac/60))}:${fmt(ac%60)}~${fmt(Math.floor(end/60))}:${fmt(end%60)}`,song:s.title,members:validMembers(s.sessions).join(', '),duration:slotDur});
+      assigned.add(s.id); cursor=end;
     });
+    return slots;
+  }
 
-    if(slots.length) schedule.days.push({day,slots,slotDur:slots[0]?.duration||60});
+  function isConsecutive(d1,d2){ return DAYS.indexOf(d2)-DAYS.indexOf(d1)===1; }
+
+  const farSongs=songArr.filter(s=>isFarSong(s));
+  const nonFarSongs=songArr.filter(s=>!isFarSong(s));
+  const daySlots=new Map();
+
+  // ── 원거리 곡 배치 ──
+  if(farSongs.length>0){
+    // 1) 하루에 전부 시도
+    let oneDayPlaced=false;
+    for(const day of days){
+      const snap=new Set(assigned);
+      // 임시 배치로 몇 곡 들어가는지 확인
+      const tmpSlots=placeFarSongs(day,farSongs,null);
+      const placed=tmpSlots.length;
+      // 임시 배치한 거 되돌리기
+      tmpSlots.forEach(sl=>{const s=farSongs.find(s=>s.title===sl.song);if(s)assigned.delete(s.id);});
+      if(placed===farSongs.length){
+        // 실제 배치
+        const real=placeFarSongs(day,farSongs,null);
+        daySlots.set(day,real);
+        oneDayPlaced=true;
+        break;
+      }
+    }
+
+    // 2) 연속 이틀 우선, 안 되면 비연속 이틀
+    if(!oneDayPlaced){
+      let bestPair=null,bestTotal=0,bestIsConsec=false;
+
+      const tryPairs=(consecOnly)=>{
+        for(let i=0;i<days.length;i++){
+          for(let j=i+1;j<days.length;j++){
+            const d1=days[i],d2=days[j];
+            const consec=isConsecutive(d1,d2);
+            if(consecOnly&&!consec) continue;
+            if(!consecOnly&&consec) continue;
+
+            // 임시 배치 테스트
+            const snap1=new Set(assigned);
+            const sl1=placeFarSongs(d1,farSongs,null);
+            const c1=sl1.length;
+            sl1.forEach(sl=>{const s=farSongs.find(s=>s.title===sl.song);if(s)assigned.delete(s.id);});
+
+            const rem=farSongs.filter(s=>!sl1.map(sl=>sl.song).includes(s.title)||false);
+            // 실제로는 snap1 기준으로 다시
+            // 간단하게: 첫째날 배치 후 남은 곡 둘째날
+            const placed1=new Set();
+            sl1.forEach(sl=>{const s=farSongs.find(s=>s.title===sl.song);if(s)placed1.add(s.id);});
+            const rem2=farSongs.filter(s=>!placed1.has(s.id));
+
+            const snap2=new Set(assigned);
+            const sl2=placeFarSongs(d2,rem2,FAR_END_CAP);
+            const c2=sl2.length;
+            sl2.forEach(sl=>{const s=farSongs.find(s=>s.title===sl.song);if(s)assigned.delete(s.id);});
+
+            const total=c1+c2;
+            if(total>bestTotal){bestTotal=total;bestPair={d1,d2};bestIsConsec=consec;}
+            if(total===farSongs.length) return true;
+          }
+        }
+        return false;
+      };
+
+      // 연속 먼저
+      const consecDone=tryPairs(true);
+      // 연속으로 전부 못 하면 비연속도 시도
+      if(!consecDone) tryPairs(false);
+
+      if(bestPair){
+        const {d1,d2}=bestPair;
+        if(!bestIsConsec)
+          schedule.farWarning=`⚠️ 연속 이틀 배치가 불가능해 ${d1}·${d2}요일(비연속)로 배치됩니다.`;
+
+        // 실제 배치
+        const real1=placeFarSongs(d1,farSongs,null);
+        if(real1.length) daySlots.set(d1,real1);
+        const rem=farSongs.filter(s=>!assigned.has(s.id));
+        if(rem.length){
+          const real2=placeFarSongs(d2,rem,FAR_END_CAP);
+          if(real2.length){
+            if(daySlots.has(d2)) daySlots.get(d2).push(...real2);
+            else daySlots.set(d2,real2);
+          }
+        }
+        const stillMissing=farSongs.filter(s=>!assigned.has(s.id));
+        if(stillMissing.length){
+          const msg=`배치 불가 곡: ${stillMissing.map(s=>s.title).join(', ')}`;
+          schedule.farWarning=(schedule.farWarning||'⚠️ ')+' '+msg;
+        }
+      } else {
+        schedule.farWarning='⚠️ 원거리 참여자 곡 배치 경우의 수가 없어요. 집부가 직접 조정해주세요.';
+      }
+    }
+  }
+
+  // ── 일반 곡 배치 ──
+  days.forEach(day=>{
+    const existing=daySlots.get(day)||[];
+    let startCursor=null;
+    if(existing.length){
+      const[h,m]=existing[existing.length-1].time.split('~')[1].split(':').map(Number);
+      startCursor=h*60+m;
+    }
+    const slots=placeNonFarSongs(day,nonFarSongs,startCursor);
+    if(slots.length){
+      if(daySlots.has(day)) daySlots.get(day).push(...slots);
+      else daySlots.set(day,slots);
+    }
   });
 
+  // 결과 정리
+  days.forEach(day=>{
+    const slots=daySlots.get(day)||[];
+    if(slots.length) schedule.days.push({day,slots,slotDur:slots[0]?.duration||60});
+  });
   schedule.coveredSongs=assigned.size;
 
-  const farOnlyVoters=farVoters.filter(v=>!multiDayNames.has(v.name));
-  if(farOnlyVoters.length&&schedule.days.length){
-    const farDays=new Set();
-    schedule.days.forEach(d=>{
-      const sp=d.slots.some(sl=>{
-        const song=songArr.find(s=>s.title===sl.song);
-        return song&&songParticipants[song.id]?.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name));
-      });
-      if(sp) farDays.add(d.day);
-    });
-    schedule.farScore=Math.max(0,schedule.days.length-farDays.size+1)*farOnlyVoters.length;
+  // 원거리 점수
+  if(farOnlyNames.size&&schedule.days.length){
+    const farDays=new Set(schedule.days.filter(d=>d.slots.some(sl=>{
+      const song=songArr.find(s=>s.title===sl.song);
+      return song&&songParticipants[song.id]?.members.some(name=>farOnlyNames.has(name));
+    })).map(d=>d.day));
+    schedule.farScore=Math.max(0,schedule.days.length-farDays.size+1)*farOnlyNames.size;
   }
 
   return schedule.days.length?schedule:null;
 }
-
 
 function generateFallbackSchedule(songArr,voteArr,songParticipants){
   const sc={days:[],coveredSongs:0,farScore:0,label:'기본 시간표 (데이터 부족)'};
@@ -1292,6 +1422,7 @@ function timetableCardHtml(sc,isRecommended,idx){
         <div class="timetable-title">${isRecommended?'⭐ ':''} ${sc.label} <span style="font-size:12px;color:var(--text2);">(${sc.coveredSongs}곡)</span></div>
         ${isRecommended?'<div style="font-size:12px;color:var(--accent);margin-top:2px;">추천 시간표</div>':''}
         ${farNote}
+        ${sc.farWarning?`<div style="font-size:12px;color:var(--red);margin-top:4px;">${sc.farWarning}</div>`:''}
       </div>
       <div style="display:flex;gap:6px;align-items:flex-start;">
         ${isRecommended?'<span class="recommend-badge">추천</span>':''}
