@@ -1080,8 +1080,8 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
   days.forEach(day=>{
     const isWeekend=WEEKEND.includes(day);
     const dayStartMin=isWeekend?9*60:15*60;
-    const dayHardEnd=isWeekend?22*60:21*60;
-    const normalEndMin=isWeekend?19*60:21*60;
+    const dayHardEnd=isWeekend?22*60:22*60;
+    const normalEndMin=isWeekend?19*60:22*60;
     const farEndMin=19*60;
     const weekendPreferStart=12*60;
 
@@ -1236,18 +1236,20 @@ function timetableCardHtml(sc,isRecommended,idx){
   const allDays=DAYS; // 월~일 전체
   const activeDays=sc.days.map(d=>d.day);
 
-  // 전체 시간 범위 계산 (합주 있는 요일 기준, 15분 단위)
-  let minMin=24*60, maxMin=0;
+  // ── 시간 범위 계산 ──
+  const hasWeekend=sc.days.some(d=>WEEKEND.includes(d.day));
+  const fixedStart=hasWeekend?9*60:15*60;
+  const fixedEnd=hasWeekend?22*60:22*60;
+  // 실제 배치된 슬롯의 끝 시간도 고려 (잘림 방지)
+  let actualEnd=fixedEnd;
   sc.days.forEach(d=>{
     d.slots.forEach(s=>{
-      const [sh,sm]=s.time.split('~')[0].split(':').map(Number);
       const [eh,em]=s.time.split('~')[1].split(':').map(Number);
-      minMin=Math.min(minMin,sh*60+sm);
-      maxMin=Math.max(maxMin,eh*60+em);
+      actualEnd=Math.max(actualEnd,eh*60+em);
     });
   });
-  if(minMin===24*60) minMin=15*60; // 기본값
-  if(maxMin===0) maxMin=21*60;
+  const minMin=fixedStart;
+  const maxMin=actualEnd;
 
   const timeSlots=[];
   for(let t=minMin;t<maxMin;t+=15) timeSlots.push(t);
