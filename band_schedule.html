@@ -1071,62 +1071,63 @@ function generateSchedules(songArr,voteArr){
 function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
   const schedule={days:[],coveredSongs:0,farScore:0,label:days.join('·')+'요일'};
   const assigned=new Set();
-
-  // 원거리 부원 이름 목록
   const farNames=new Set(farVoters.map(v=>v.name));
-  // 이틀 이상 가능한 부원 이름 목록
   const multiDayNames=new Set(voteArr.filter(v=>v.isMultiDay).map(v=>v.name));
+
+  // 특정 곡을 특정 요일에 배치 가능한지 확인
+  function canPlaceOnDay(s, day){
+    const sp=songParticipants[s.id];
+    if(!sp||!sp.members.length) return true;
+    return sp.members.every(name=>{
+      const v=voteArr.find(vt=>vt.name===name);
+      if(!v) return true; // 미투표자 → 가능
+      if((v.impossibleDays||[]).includes(day)) return false; // 명시적 불가만 차단
+      const daySlots=(v.timeSlots||{})[day]||[];
+      if(!daySlots.length) return true; // 시간대 미입력 → 가능
+      return daySlots.some(ts=>{
+        if(!ts.start||!ts.end) return false;
+        const [sh,sm]=ts.start.split(':').map(Number);
+        const [eh,em]=ts.end.split(':').map(Number);
+        // 해당 요일에 최소 1시간 이상 가능한 시간대가 있으면 OK
+        return sh*60+sm<22*60 && eh*60+em>15*60;
+      });
+    });
+  }
+
+  // 특정 cursor 시간에 배치 가능한지 확인
+  function canPlaceAtTime(s, day, cursor, slotDur){
+    const sp=songParticipants[s.id];
+    if(!sp||!sp.members.length) return true;
+    return sp.members.every(name=>{
+      const v=voteArr.find(vt=>vt.name===name);
+      if(!v) return true;
+      if((v.impossibleDays||[]).includes(day)) return false;
+      const daySlots=(v.timeSlots||{})[day]||[];
+      if(!daySlots.length) return true;
+      return daySlots.some(ts=>{
+        if(!ts.start||!ts.end) return false;
+        const [sh,sm]=ts.start.split(':').map(Number);
+        const [eh,em]=ts.end.split(':').map(Number);
+        return sh*60+sm<=cursor && eh*60+em>=cursor+slotDur;
+      });
+    });
+  }
 
   days.forEach(day=>{
     const isWeekend=WEEKEND.includes(day);
     const dayStartMin=isWeekend?9*60:15*60;
-    const dayHardEnd=isWeekend?22*60:22*60;
-    const normalEndMin=isWeekend?19*60:22*60;
-    const farEndMin=19*60;
-    const weekendPreferStart=12*60;
+    const dayEndMin=22*60; // 평일/주말 모두 22:00
+    const farEndMin=19*60; // 원거리 종료 제한
+    const startCursor=isWeekend?Math.max(dayStartMin,12*60):dayStartMin;
 
-    const daySongs=songArr.filter(s=>{
-      if(assigned.has(s.id)) return false;
-      const sp=songParticipants[s.id];
-      if(!sp||!sp.members.length) return true;
-      return sp.members.every(name=>{
-        const v=voteArr.find(vt=>vt.name===name);
-        if(!v) return true;
-        if((v.impossibleDays||[]).includes(day)) return false;
-        const daySlots=(v.timeSlots||{})[day]||[];
-        if(!daySlots.length) return false;
-        return daySlots.some(ts=>{
-          if(!ts.start||!ts.end) return false;
-          const [sh,sm]=ts.start.split(':').map(Number);
-          const [eh,em]=ts.end.split(':').map(Number);
-          return sh*60+sm<dayHardEnd && eh*60+em>dayStartMin;
-        });
-      });
-    });
+    // 이 요일에 배치 가능한 곡 목록
+    const daySongs=songArr.filter(s=>
+      !assigned.has(s.id) && canPlaceOnDay(s, day)
+    );
 
     if(!daySongs.length) return;
 
-    const totalSongs=daySongs.length;
-
-    // ── 합주 시간 동적 결정 ──
-    // 가용 시간 / 곡 수로 1곡당 최적 시간 계산
-    // 경우의 수: 60 / 70 / 75 / 80 / 90분
-    const startCursor=isWeekend?Math.max(dayStartMin,weekendPreferStart):dayStartMin;
-    const availableMin=normalEndMin-startCursor;
-    const rawPerSong=availableMin/totalSongs;
-    const DURATIONS=[90,80,75,70,60];
-    // 가용 시간 내에서 최대한 긴 슬롯 선택
-    let slotDur=DURATIONS.find(d=>d*totalSongs<=availableMin)||60;
-
-    let cursor=startCursor;
-
-    const slots=[];
-
-    // ── 배치 우선순위 4단계 분류 ──
-    // 1순위: 원거리 + 이틀 불가 (하루만 올 수 있음) → 최우선
-    // 2순위: 원거리 + 이틀 가능 → 원거리 차순위
-    // 3순위: 일반 (원거리도 이틀가능도 아님)
-    // 4순위: 이틀가능만 (원거리 아님) → 가장 유연하므로 후순위
+    // 우선순위 분류
     const tier1=daySongs.filter(s=>{
       const sp=songParticipants[s.id];
       return sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name));
@@ -1142,33 +1143,32 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
     const tier3=daySongs.filter(s=>!tier1.includes(s)&&!tier2.includes(s)&&!tier4.includes(s));
     const orderedSongs=[...tier1,...tier2,...tier3,...tier4];
 
+    // 가용 시간 계산해서 slotDur 결정
+    const availableMin=dayEndMin-startCursor;
+    const DURATIONS=[90,80,75,70,60];
+    let slotDur=DURATIONS.find(d=>d*orderedSongs.length<=availableMin)||60;
+
+    let cursor=startCursor;
+    const slots=[];
+
     orderedSongs.forEach(s=>{
       const sp=songParticipants[s.id];
-      const hasFarOnly=sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name));
-      const hasFarMulti=!hasFarOnly&&sp.voters.some(v=>farNames.has(v.name)&&multiDayNames.has(v.name));
-      const hasMultiOnly=!hasFarOnly&&!hasFarMulti&&sp.voters.some(v=>!farNames.has(v.name)&&multiDayNames.has(v.name));
-      const songEndLimit=(hasFarOnly||hasFarMulti)?farEndMin:normalEndMin;
+      const hasFarRestriction=sp.voters.some(v=>farNames.has(v.name)&&!multiDayNames.has(v.name))
+        ||sp.voters.some(v=>farNames.has(v.name)&&multiDayNames.has(v.name));
 
-      if(cursor+slotDur>songEndLimit){
-        if(hasFarOnly||hasFarMulti) return;
-        if(cursor+slotDur>dayHardEnd) return;
+      // 원거리 있는 곡은 19:00 전에 끝나야 함
+      const effectiveEnd=hasFarRestriction?farEndMin:dayEndMin;
+
+      // cursor가 끝 시간 초과하면 스킵
+      if(cursor+slotDur>effectiveEnd){
+        // 원거리 제한 때문이면 그냥 스킵 (다른 날에 배치 시도)
+        if(hasFarRestriction) return;
+        // 일반 곡이면 dayEndMin까지는 배치 시도
+        if(cursor+slotDur>dayEndMin) return;
       }
 
-      // 전원 가능 여부: 투표자는 실제 시간 확인, 미투표자는 가능으로 간주
-      const canPlace=!sp.members.length||sp.members.every(name=>{
-        const v=voteArr.find(vt=>vt.name===name);
-        if(!v) return true; // 미투표자 → 가능으로 간주
-        if((v.impossibleDays||[]).includes(day)) return false;
-        const daySlots=(v.timeSlots||{})[day]||[];
-        return daySlots.some(ts=>{
-          if(!ts.start||!ts.end) return false;
-          const [sh,sm]=ts.start.split(':').map(Number);
-          const [eh,em]=ts.end.split(':').map(Number);
-          return sh*60+sm<=cursor && eh*60+em>=cursor+slotDur;
-        });
-      });
-
-      if(!canPlace) return;
+      // 이 시간에 배치 가능한지 확인
+      if(!canPlaceAtTime(s, day, cursor, slotDur)) return;
 
       const fmt=n=>String(n).padStart(2,'0');
       const startH=Math.floor(cursor/60),startM=cursor%60;
@@ -1189,9 +1189,7 @@ function buildSchedule(days,songArr,voteArr,songParticipants,farVoters){
 
   schedule.coveredSongs=assigned.size;
 
-  // ── 원거리 점수 계산 ──
-  // 🚌(하루만) 부원이 참여하는 곡들이 최소 날짜에 몰릴수록 점수 높음
-  // 🚌📅(이틀가능)는 하루 집중 필요 없으므로 점수 계산 제외
+  // 원거리 점수
   const farOnlyVoters=farVoters.filter(v=>!multiDayNames.has(v.name));
   if(farOnlyVoters.length&&schedule.days.length){
     const farOnlyDayCount=schedule.days.filter(d=>
